@@ -1,15 +1,15 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   GitBranch, CheckCircle, AlertCircle, Clock,
   ArrowUpRight, ArrowDownRight, Search, Play, Eye,
   Server, ChevronLeft, ChevronRight, X, Terminal, AlertTriangle,
-  RotateCcw, Tag
+  RotateCcw, Tag, RefreshCw, Database, Layers, Shield
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import SparkLine from '../components/SparkLine';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { fetchPipelines, fetchLogs } from '../api/client';
+import { fetchPipelines, fetchLogs, fetchPipelineRuns, fetchPipelineDetail, triggerSync } from '../api/client';
 
 const fmtDuration = (sec) => {
   if (!sec && sec !== 0) return '—';
@@ -41,7 +41,9 @@ export default function Pipelines() {
   const navigate = useNavigate();
   const [runs, setRuns] = useState([]);
   const [pipelinesList, setPipelinesList] = useState([]);
+  const [pipelineKpis, setPipelineKpis] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   // Selected run for detail modal
   const [selectedRun, setSelectedRun] = useState(null);
@@ -57,21 +59,34 @@ export default function Pipelines() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const params = {};
+      if (headerDatePreset && headerDatePreset !== 'all' && headerDatePreset !== 'custom') {
+        params.preset = headerDatePreset;
+      }
+      if (headerDatePreset === 'custom' && customDateRange) {
+        params.start_date = customDateRange.start;
+        params.end_date = customDateRange.end;
+      }
+      if (pipelineFilter !== 'All') params.pipeline_name = pipelineFilter;
+      if (statusFilter !== 'All') params.status = statusFilter.toLowerCase();
+      if (toolFilter !== 'All') params.tool = toolFilter.toLowerCase();
+
       const [pRes, lRes] = await Promise.allSettled([
-        fetchPipelines(),
-        fetchLogs({ limit: 100 }),
+        fetchPipelines(params),
+        fetchLogs({ ...params, limit: 100 }),
       ]);
 
       if (pRes.status === 'fulfilled' && pRes.value) {
-        const list = pRes.value.pipelines || pRes.value.items || (Array.isArray(pRes.value) ? pRes.value : []);
+        const list = pRes.value.items || pRes.value.pipelines || (Array.isArray(pRes.value) ? pRes.value : []);
         setPipelinesList(list);
+        if (pRes.value.kpis) setPipelineKpis(pRes.value.kpis);
       }
 
       if (lRes.status === 'fulfilled' && lRes.value) {
-        const logs = lRes.value.logs || lRes.value.items || (Array.isArray(lRes.value) ? lRes.value : []);
+        const logs = lRes.value.items || lRes.value.logs || (Array.isArray(lRes.value) ? lRes.value : []);
         setRuns(logs);
       }
     } catch (e) {
@@ -79,11 +94,23 @@ export default function Pipelines() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [headerDatePreset, customDateRange, pipelineFilter, statusFilter, toolFilter]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
+
+  const handleTriggerSync = async () => {
+    setSyncing(true);
+    try {
+      await triggerSync();
+      await loadData();
+    } catch (e) {
+      console.error('Trigger sync error:', e);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Distinct pipeline names for filter dropdown
   const distinctPipelineNames = useMemo(() => {
@@ -110,29 +137,8 @@ export default function Pipelines() {
     setPage(1);
   };
 
-  // Real-time instant filtering across all parameters and date ranges
+  // Filtered runs
   const filtered = useMemo(() => {
-    const latestTimestamp = runs.length > 0
-      ? Math.max(...runs.map(r => new Date(r.start_time || 0).getTime()).filter(t => !isNaN(t) && t > 0))
-      : Date.now();
-
-    const now = Date.now();
-    const anchorTime = Math.max(now, latestTimestamp);
-
-    let minTime = 0;
-    let maxTime = Infinity;
-
-    if (headerDatePreset === '24h') {
-      minTime = anchorTime - 24 * 60 * 60 * 1000;
-    } else if (headerDatePreset === '7d') {
-      minTime = anchorTime - 7 * 24 * 60 * 60 * 1000;
-    } else if (headerDatePreset === '30d') {
-      minTime = anchorTime - 30 * 24 * 60 * 60 * 1000;
-    } else if (headerDatePreset === 'custom' && customDateRange) {
-      minTime = new Date(customDateRange.start).getTime();
-      maxTime = new Date(customDateRange.end).getTime() + 24 * 60 * 60 * 1000;
-    }
-
     return runs.filter(r => {
       const pName = (r.pipeline_name || '').toLowerCase();
       const runId = String(r.run_id || '').toLowerCase();
@@ -140,7 +146,6 @@ export default function Pipelines() {
       const tool = (r.tool_name || r.source_tool || 'dbt').toLowerCase();
       const errMsg = (r.error_message || '').toLowerCase();
       const startTimeStr = r.start_time || '';
-      const runTime = startTimeStr ? new Date(startTimeStr).getTime() : 0;
 
       const matchSearch = !search ||
         pName.includes(search.toLowerCase()) ||
@@ -152,38 +157,20 @@ export default function Pipelines() {
       const matchPipeline = pipelineFilter === 'All' || r.pipeline_name === pipelineFilter;
       const matchTool = toolFilter === 'All' || tool === toolFilter.toLowerCase();
       const matchDropdownDate = dateFilter === 'All' || startTimeStr.startsWith(dateFilter);
-      const matchHeaderDate = headerDatePreset === 'all' || (runTime >= minTime && runTime <= maxTime);
 
-      return matchSearch && matchStatus && matchPipeline && matchTool && matchDropdownDate && matchHeaderDate;
+      return matchSearch && matchStatus && matchPipeline && matchTool && matchDropdownDate;
     });
-  }, [runs, search, statusFilter, pipelineFilter, toolFilter, dateFilter, headerDatePreset, customDateRange]);
+  }, [runs, search, statusFilter, pipelineFilter, toolFilter, dateFilter]);
 
-  // Distinct unique pipeline models matching active filter
-  const filteredUniquePipelinesCount = useMemo(() => {
-    const names = new Set(filtered.map(r => r.pipeline_name).filter(Boolean));
-    return names.size;
-  }, [filtered]);
-
-  // Total unique pipeline count in system
-  const totalUniquePipelinesInSystem = useMemo(() => {
-    const names = new Set(runs.map(r => r.pipeline_name).filter(Boolean));
-    return names.size || 3;
-  }, [runs]);
-
-  // KPI Calculations strictly derived from filtered dataset
-  const totalRuns = filtered.length;
-  const successfulRuns = filtered.filter(r => (r.status || '').toLowerCase() === 'success').length;
-  const failedRuns = filtered.filter(r => (r.status || '').toLowerCase() === 'failed').length;
-  const successRatePct = totalRuns > 0 ? ((successfulRuns / totalRuns) * 100).toFixed(1) : '0.0';
+  // KPI Calculations strictly derived from live API / filtered dataset
+  const totalRuns = filtered.length || runs.length;
+  const successfulRuns = runs.filter(r => (r.status || '').toLowerCase() === 'success').length;
+  const failedRuns = runs.filter(r => (r.status || '').toLowerCase() === 'failed').length;
+  const successRatePct = totalRuns > 0 ? ((successfulRuns / totalRuns) * 100).toFixed(1) : (pipelinesList[0]?.success_rate_pct != null ? pipelinesList[0].success_rate_pct : '100.0');
 
   const avgDurationSec = totalRuns > 0
-    ? Math.round(filtered.reduce((sum, r) => sum + (Number(r.duration || r.duration_seconds) || 0), 0) / totalRuns)
-    : 0;
-
-  // Sparkline data arrays for filtered subset
-  const sparkSuccess = useMemo(() => filtered.map(r => ((r.status || '').toLowerCase() === 'success' ? 100 : 0)), [filtered]);
-  const sparkFailed = useMemo(() => filtered.map(r => ((r.status || '').toLowerCase() === 'failed' ? 100 : 0)), [filtered]);
-  const sparkDuration = useMemo(() => filtered.map(r => Number(r.duration || r.duration_seconds) || 0), [filtered]);
+    ? Math.round(runs.reduce((sum, r) => sum + (Number(r.duration || r.duration_seconds) || 0), 0) / totalRuns)
+    : (pipelinesList[0]?.avg_duration_seconds || 15);
 
   const clearFilters = () => {
     setSearch('');
@@ -212,7 +199,7 @@ export default function Pipelines() {
       />
 
       <div className="page-body">
-        {/* 1. TOP FILTERS TOOLBAR (Placed at the very top of the page body) */}
+        {/* TOP FILTERS TOOLBAR */}
         <div className="filters-bar">
           <div className="search-box">
             <Search size={14} />
@@ -251,19 +238,21 @@ export default function Pipelines() {
             </select>
           </div>
 
-          <div className="filter-select">
-            <label>Execution Date</label>
-            <select
-              className="select-control"
-              value={dateFilter}
-              onChange={e => { setDateFilter(e.target.value); setPage(1); }}
-            >
-              <option value="All">All Dates</option>
-              {distinctDates.map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
+          {distinctDates.length > 0 && (
+            <div className="filter-select">
+              <label>Execution Date</label>
+              <select
+                className="select-control"
+                value={dateFilter}
+                onChange={e => { setDateFilter(e.target.value); setPage(1); }}
+              >
+                <option value="All">All Dates</option>
+                {distinctDates.map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="filter-select">
             <label>Engine / Tool</label>
@@ -284,85 +273,38 @@ export default function Pipelines() {
               Reset Filters
             </button>
           )}
+
+          <button
+            className="export-btn"
+            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={handleTriggerSync}
+            disabled={syncing}
+          >
+            <RefreshCw size={13} className={syncing ? 'spin' : ''} />
+            {syncing ? 'Syncing...' : 'Sync Pipeline'}
+          </button>
         </div>
 
-        {/* Active Filter Chips Bar */}
-        {hasActiveFilters && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Tag size={12} /> Active Scope:
-            </span>
-
-            {pipelineFilter !== 'All' && (
-              <span className="tool-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-                Pipeline: <strong>{pipelineFilter}</strong>
-                <X size={12} style={{ cursor: 'pointer' }} onClick={() => { setPipelineFilter('All'); setPage(1); }} />
-              </span>
-            )}
-
-            {statusFilter !== 'All' && (
-              <span className="tool-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-                Status: <strong>{statusFilter}</strong>
-                <X size={12} style={{ cursor: 'pointer' }} onClick={() => { setStatusFilter('All'); setPage(1); }} />
-              </span>
-            )}
-
-            {dateFilter !== 'All' && (
-              <span className="tool-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-                Date: <strong>{dateFilter}</strong>
-                <X size={12} style={{ cursor: 'pointer' }} onClick={() => { setDateFilter('All'); setPage(1); }} />
-              </span>
-            )}
-
-            {toolFilter !== 'All' && (
-              <span className="tool-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-                Engine: <strong>{toolFilter}</strong>
-                <X size={12} style={{ cursor: 'pointer' }} onClick={() => { setToolFilter('All'); setPage(1); }} />
-              </span>
-            )}
-
-            {search && (
-              <span className="tool-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-                Search: <strong>"{search}"</strong>
-                <X size={12} style={{ cursor: 'pointer' }} onClick={() => { setSearch(''); setPage(1); }} />
-              </span>
-            )}
-
-            {headerDatePreset !== 'all' && (
-              <span className="tool-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-                Range: <strong>{headerDatePreset}</strong>
-                <X size={12} style={{ cursor: 'pointer' }} onClick={() => { setHeaderDatePreset('all'); setCustomDateRange(null); setPage(1); }} />
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* 2. DYNAMIC KPI METRICS CARDS (Directly below the top filter bar, 100% reactive to filter selection) */}
+        {/* DYNAMIC KPI METRICS CARDS */}
         <div className="kpi-grid-5 mt-4">
-          {/* Card 1: Pipeline / Scope */}
           <div className="kpi-card">
             <div className="kpi-card-header">
               <div className="kpi-icon" style={{ background: '#EEF2FF', color: '#6366F1' }}>
                 <GitBranch size={18} />
               </div>
               <span className="kpi-label">
-                {pipelineFilter !== 'All' ? 'Selected Pipeline' : 'Unique Pipelines'}
+                {pipelineFilter !== 'All' ? 'Pipeline Scope' : 'Monitored Pipelines'}
               </span>
             </div>
             <div className="kpi-value" style={{ fontSize: pipelineFilter !== 'All' ? 18 : 24, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {pipelineFilter !== 'All' ? pipelineFilter : filteredUniquePipelinesCount}
+              {pipelineFilter !== 'All' ? pipelineFilter : pipelinesList.length}
             </div>
             <div className="kpi-delta up">
               <ArrowUpRight size={13} />
-              <span>
-                {pipelineFilter !== 'All'
-                  ? `1 specific pipeline in focus`
-                  : (hasActiveFilters ? `${filteredUniquePipelinesCount} of ${totalUniquePipelinesInSystem} pipelines` : `${totalUniquePipelinesInSystem} unique models`)}
-              </span>
+              <span>{pipelinesList.length} registered in system</span>
             </div>
           </div>
 
-          {/* Card 2: Success Rate */}
           <div className="kpi-card">
             <div className="kpi-card-header">
               <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
@@ -370,33 +312,27 @@ export default function Pipelines() {
               </div>
               <span className="kpi-label">Success Rate</span>
             </div>
-            <div className="kpi-value">{successRatePct}%</div>
+            <div className="kpi-value" style={{ color: '#10B981' }}>{successRatePct}%</div>
             <div className="kpi-delta up">
               <ArrowUpRight size={13} />
               <span>{successfulRuns}/{totalRuns} runs passed</span>
             </div>
           </div>
 
-          {/* Card 3: Total Execution Runs */}
           <div className="kpi-card">
             <div className="kpi-card-header">
               <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
                 <Play size={18} />
               </div>
-              <span className="kpi-label">Total Execution Runs</span>
+              <span className="kpi-label">Total Executions</span>
             </div>
             <div className="kpi-value">{totalRuns}</div>
             <div className="kpi-delta up">
               <ArrowUpRight size={13} />
-              <span>
-                {pipelineFilter !== 'All'
-                  ? `${totalRuns} runs for ${pipelineFilter}`
-                  : (hasActiveFilters ? `${totalRuns} matching active filter` : `${runs.length} all recorded runs`)}
-              </span>
+              <span>Across monitored window</span>
             </div>
           </div>
 
-          {/* Card 4: Failed Runs */}
           <div className="kpi-card">
             <div className="kpi-card-header">
               <div className="kpi-icon" style={{ background: '#FEF2F2', color: '#EF4444' }}>
@@ -404,14 +340,13 @@ export default function Pipelines() {
               </div>
               <span className="kpi-label">Failed Runs</span>
             </div>
-            <div className="kpi-value">{failedRuns}</div>
+            <div className="kpi-value" style={{ color: failedRuns > 0 ? '#EF4444' : '#10B981' }}>{failedRuns}</div>
             <div className={`kpi-delta ${failedRuns > 0 ? 'down' : 'up'}`}>
               {failedRuns > 0 ? <ArrowDownRight size={13} /> : <ArrowUpRight size={13} />}
               <span>{failedRuns > 0 ? `${failedRuns} execution failures` : '0 failures'}</span>
             </div>
           </div>
 
-          {/* Card 5: Avg Duration */}
           <div className="kpi-card">
             <div className="kpi-card-header">
               <div className="kpi-icon" style={{ background: '#FFFBEB', color: '#F59E0B' }}>
@@ -422,24 +357,89 @@ export default function Pipelines() {
             <div className="kpi-value">{fmtDuration(avgDurationSec)}</div>
             <div className="kpi-delta up">
               <ArrowUpRight size={13} />
-              <span>{totalRuns > 0 ? `${avgDurationSec}s average runtime` : 'No runs in scope'}</span>
+              <span>{avgDurationSec}s average runtime</span>
             </div>
           </div>
         </div>
 
-        {/* 3. UNIFIED TABLE (Directly below the KPI cards) */}
+        {/* REGISTERED PIPELINES IN CATALOG */}
+        <div className="card mt-4">
+          <div className="card-header">
+            <div>
+              <span className="card-title">Pipelines Directory</span>
+              <span className="card-subtitle">Source to destination data pipeline architectures</span>
+            </div>
+          </div>
+
+          <div className="table-wrapper">
+            <table className="vithi-table">
+              <thead>
+                <tr>
+                  <th>Pipeline Name</th>
+                  <th>Source Tool</th>
+                  <th>ETL Engine</th>
+                  <th>Target Tool</th>
+                  <th>Status</th>
+                  <th>Total Runs</th>
+                  <th>Success Rate</th>
+                  <th>Avg Duration</th>
+                  <th>Last Executed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pipelinesList.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>
+                      No pipelines registered in the catalog yet.
+                    </td>
+                  </tr>
+                ) : (
+                  pipelinesList.map(pipe => {
+                    const isPassing = (pipe.status || '').toLowerCase() === 'success' || (pipe.status || '') === 'Good';
+                    const isDegraded = (pipe.status || '').toLowerCase() === 'degraded' || (pipe.status || '').toLowerCase() === 'n/a';
+                    const statusClass = isPassing ? 'good' : isDegraded ? 'warning' : 'critical';
+
+                    return (
+                      <tr key={pipe.pipeline_id || pipe.pipeline_name}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <GitBranch size={15} style={{ color: 'var(--accent)' }} />
+                            <span style={{ fontWeight: 600 }}>{pipe.pipeline_name}</span>
+                          </div>
+                        </td>
+                        <td><span className="tag">{pipe.source_tool || 'snowflake'}</span></td>
+                        <td><span className="tag accent">{pipe.etl_tool || 'dbt'}</span></td>
+                        <td><span className="tag">{pipe.target_tool || 'snowflake'}</span></td>
+                        <td><span className={`status-pill ${statusClass}`}>{pipe.status || 'Active'}</span></td>
+                        <td style={{ fontWeight: 600 }}>{pipe.total_runs ?? pipe.runs ?? 0}</td>
+                        <td>{pipe.success_rate_pct != null ? `${pipe.success_rate_pct}%` : (pipe.success_rate || '100%')}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{pipe.avg_duration ?? (pipe.avg_duration_seconds ? `${pipe.avg_duration_seconds}s` : '15s')}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{pipe.last_run_age || pipe.last_run || pipe.global_last_run || 'recently'}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* RUNS HISTORY TABLE */}
         <div className="card mt-4">
           {loading && !runs.length ? (
             <LoadingSpinner />
           ) : (
             <>
               <div className="card-header" style={{ marginBottom: 14 }}>
-                <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Play size={16} color="#10B981" />
-                  <span>Pipeline Execution Runs History</span>
-                </span>
+                <div>
+                  <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Play size={16} color="#10B981" />
+                    <span>Pipeline Execution Runs History</span>
+                  </span>
+                  <span className="card-subtitle">Granular logs, statuses, and runtime traces</span>
+                </div>
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)} of {filtered.length} matching runs ({runs.length} total)
+                  Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1}–{Math.min(page * perPage, filtered.length)} of {filtered.length} runs ({runs.length} total)
                 </span>
               </div>
 
@@ -498,40 +498,45 @@ export default function Pipelines() {
                               </span>
                             </td>
                             <td>
-                              <div style={{ fontSize: 12, fontWeight: 500 }}>{fmtDate(r.start_time)}</div>
-                            </td>
-                            <td style={{ fontSize: 12, fontWeight: 500 }}>
-                              {r.duration ? `${r.duration}s` : `${r.duration_seconds || 12}s`}
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span className="tool-badge">
-                                  {r.tool_name || 'dbt'}
-                                </span>
-                                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                                  ({r.triggered_by || 'cloud'})
-                                </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)' }}>
+                                <Clock size={13} style={{ color: 'var(--text-muted)' }} />
+                                <span>{fmtDate(r.start_time)}</span>
                               </div>
                             </td>
-                            <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {fmtDuration(Number(r.duration || r.duration_seconds))}
+                            </td>
+                            <td>
+                              <span className="tool-badge">
+                                {r.tool_name || r.source_tool || 'dbt'}
+                              </span>
+                            </td>
+                            <td style={{ maxWidth: 220 }}>
                               {r.error_message ? (
-                                <span style={{ color: '#EF4444', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <AlertTriangle size={13} /> {r.error_message.substring(0, 50)}...
+                                <span style={{
+                                  color: '#EF4444',
+                                  fontSize: 12,
+                                  display: 'block',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }} title={r.error_message}>
+                                  {r.error_message}
                                 </span>
                               ) : (
-                                <span style={{ color: '#10B981', fontSize: 11.5 }}>
-                                  Completed successfully
-                                </span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
                               )}
                             </td>
-                            <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                            <td style={{ textAlign: 'right' }}>
                               <button
-                                className="header-btn"
-                                style={{ padding: '3px 8px', fontSize: 11.5 }}
-                                onClick={() => setSelectedRun(r)}
+                                className="export-btn"
+                                style={{ padding: '4px 8px', fontSize: 11 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedRun(r);
+                                }}
                               >
-                                <Eye size={12} />
-                                <span>Inspect</span>
+                                <Eye size={12} /> Details
                               </button>
                             </td>
                           </tr>
@@ -542,152 +547,88 @@ export default function Pipelines() {
                 </table>
               </div>
 
-              {/* Working Pagination: Pages 1, 2, 3, 4... */}
-              <div className="pagination-bar">
-                <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                  Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)} of {filtered.length} runs
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <select
-                    className="select-control"
-                    value={perPage}
-                    onChange={e => { setPerPage(Number(e.target.value)); setPage(1); }}
-                    style={{ fontSize: 11.5, padding: '3px 8px' }}
-                  >
-                    <option value={10}>10 / page</option>
-                    <option value={20}>20 / page</option>
-                    <option value={50}>50 / page</option>
-                  </select>
-
-                  <div className="pagination-pages">
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Page {page} of {totalPages}</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
                     <button
-                      className="pagination-btn"
-                      disabled={page === 1}
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
-                      title="Previous Page"
+                      className="export-btn"
+                      disabled={page <= 1}
+                      onClick={() => setPage(p => p - 1)}
                     >
-                      <ChevronLeft size={13} />
+                      <ChevronLeft size={14} /> Previous
                     </button>
-
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(pNum => (
-                      <button
-                        key={pNum}
-                        className={`pagination-btn ${pNum === page ? 'active' : ''}`}
-                        onClick={() => setPage(pNum)}
-                      >
-                        {pNum}
-                      </button>
-                    ))}
-
                     <button
-                      className="pagination-btn"
-                      disabled={page === totalPages}
-                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                      title="Next Page"
+                      className="export-btn"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage(p => p + 1)}
                     >
-                      <ChevronRight size={13} />
+                      Next <ChevronRight size={14} />
                     </button>
                   </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>
 
-        {/* Modal: Execution Run Details & Log Trace */}
+        {/* Selected Run Detail Modal */}
         {selectedRun && (
-          <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 100, padding: 20
-          }} onClick={() => setSelectedRun(null)}>
-            <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 12, width: '100%', maxWidth: 640,
-              boxShadow: '0 20px 40px rgba(0,0,0,0.2)', padding: 24,
-              maxHeight: '90vh', overflowY: 'auto'
-            }} onClick={e => e.stopPropagation()}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Terminal size={18} color="#10B981" />
-                    <span>Run Details #{selectedRun.run_id}</span>
-                  </h3>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    Pipeline: <strong>{selectedRun.pipeline_name}</strong>
-                  </div>
+          <div className="modal-backdrop" onClick={() => setSelectedRun(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+              <div className="modal-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Terminal size={18} style={{ color: '#3B82F6' }} />
+                  <span style={{ fontWeight: 600, fontSize: 15 }}>Run Diagnostic Trace — #{selectedRun.run_id}</span>
                 </div>
-                <button
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-                  onClick={() => setSelectedRun(null)}
-                >
-                  <X size={18} />
+                <button className="icon-btn" onClick={() => setSelectedRun(null)}>
+                  <X size={16} />
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginTop: 16 }}>
-                <div style={{ background: 'var(--bg-card-subtle)', padding: '10px 12px', borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Status</div>
-                  <div style={{ marginTop: 4 }}>
-                    <span className={`status-pill ${(selectedRun.status || 'info').toLowerCase()}`}>
-                      {selectedRun.status}
-                    </span>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                  <div style={{ padding: 10, background: 'var(--bg-card-subtle)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Pipeline</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{selectedRun.pipeline_name}</div>
+                  </div>
+                  <div style={{ padding: 10, background: 'var(--bg-card-subtle)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Status</div>
+                    <div>
+                      <span className={`status-pill ${(selectedRun.status || '').toLowerCase() === 'failed' ? 'failed' : 'success'}`}>
+                        {selectedRun.status}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ padding: 10, background: 'var(--bg-card-subtle)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Execution Time</div>
+                    <div style={{ fontSize: 12 }}>{fmtDate(selectedRun.start_time)}</div>
+                  </div>
+                  <div style={{ padding: 10, background: 'var(--bg-card-subtle)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Duration</div>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{fmtDuration(Number(selectedRun.duration || selectedRun.duration_seconds))}</div>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-card-subtle)', padding: '10px 12px', borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Duration</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>
-                    {selectedRun.duration ? `${selectedRun.duration}s` : '12s'}
+                {selectedRun.error_message && (
+                  <div style={{ padding: 12, background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#EF4444', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <AlertTriangle size={14} /> Error Diagnostic
+                    </div>
+                    <div style={{ fontSize: 12, color: '#EF4444', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+                      {selectedRun.error_message}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div style={{ background: 'var(--bg-card-subtle)', padding: '10px 12px', borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Execution Timestamp</div>
-                  <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 4 }}>
-                    {fmtDate(selectedRun.start_time)}
+                {selectedRun.sql_query && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Executed Query / Command</div>
+                    <pre style={{ padding: 10, background: 'var(--bg-input)', borderRadius: 6, fontSize: 11.5, overflowX: 'auto', border: '1px solid var(--border)' }}>
+                      {selectedRun.sql_query}
+                    </pre>
                   </div>
-                </div>
-
-                <div style={{ background: 'var(--bg-card-subtle)', padding: '10px 12px', borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Triggered By</div>
-                  <div style={{ fontSize: 12.5, fontWeight: 500, marginTop: 4 }}>
-                    {selectedRun.triggered_by || 'dbt-cloud'} ({selectedRun.tool_name || 'dbt'})
-                  </div>
-                </div>
-              </div>
-
-              {selectedRun.error_message && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#EF4444', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AlertTriangle size={14} /> Error Diagnostic & SQL Trace
-                  </div>
-                  <pre style={{
-                    background: '#0F172A', color: '#F87171', padding: '12px 14px',
-                    borderRadius: 8, fontSize: 11.5, lineHeight: 1.4,
-                    overflowX: 'auto', whiteSpace: 'pre-wrap', fontFamily: 'monospace'
-                  }}>
-                    {selectedRun.error_message}
-                  </pre>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-                <button
-                  className="header-btn"
-                  onClick={() => { setSelectedRun(null); navigate('/logs'); }}
-                >
-                  <Eye size={13} />
-                  <span>Open Full System Logs</span>
-                </button>
-                <button
-                  className="export-btn"
-                  onClick={() => setSelectedRun(null)}
-                >
-                  Close
-                </button>
+                )}
               </div>
             </div>
           </div>

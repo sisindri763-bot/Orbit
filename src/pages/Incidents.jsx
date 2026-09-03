@@ -1,8 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
-import { AlertTriangle, AlertCircle, Info, Search, Filter, MoreVertical, ArrowUpRight } from 'lucide-react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { AlertTriangle, AlertCircle, Info, Search, Filter, MoreVertical, ArrowUpRight, CheckCircle, Shield } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { fetchRecentIncidents } from '../api/client';
+import { fetchIncidents } from '../api/client';
 
 function fmtTime(ts) {
   if (!ts) return 'recently';
@@ -13,51 +13,45 @@ function fmtTime(ts) {
 
 export default function Incidents() {
   const [incidents, setIncidents] = useState([]);
-  const [openCount, setOpenCount] = useState(1);
-  const [resolvedCount, setResolvedCount] = useState(1);
+  const [kpis, setKpis] = useState([]);
+  const [charts, setCharts] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const [sevFilter, setSevFilter] = useState('All');
+  const [headerDatePreset, setHeaderDatePreset] = useState('all');
+  const [customDateRange, setCustomDateRange] = useState(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchRecentIncidents({ preset: 'all' });
+      const params = {};
+      if (headerDatePreset && headerDatePreset !== 'all' && headerDatePreset !== 'custom') {
+        params.preset = headerDatePreset;
+      }
+      if (headerDatePreset === 'custom' && customDateRange) {
+        params.start_date = customDateRange.start;
+        params.end_date = customDateRange.end;
+      }
+      if (sevFilter !== 'All') params.severity = sevFilter.toLowerCase();
+
+      const res = await fetchIncidents(params);
       if (res) {
         const incList = res.items || res.incidents || (Array.isArray(res) ? res : []);
         setIncidents(incList);
-        setOpenCount(res.open_incidents ?? incList.filter(i => (i.state || i.status || '').toLowerCase() === 'open').length);
-        setResolvedCount(res.resolved_incidents ?? incList.filter(i => (i.state || i.status || '').toLowerCase() === 'resolved').length);
+        if (res.kpis) setKpis(res.kpis);
+        if (res.charts) setCharts(res.charts);
       }
     } catch (e) {
       console.error('Failed to load incidents:', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [headerDatePreset, customDateRange, sevFilter]);
 
   useEffect(() => {
     loadData();
-  }, []);
-
-  const filtered = useMemo(() => {
-    return incidents.filter(inc => {
-      const title = inc.title ?? inc.pipeline_name ?? '';
-      const desc = inc.description ?? '';
-      const pName = inc.pipeline_name ?? '';
-      const sev = inc.severity ?? 'Critical';
-
-      const matchSearch = title.toLowerCase().includes(search.toLowerCase()) ||
-                          desc.toLowerCase().includes(search.toLowerCase()) ||
-                          pName.toLowerCase().includes(search.toLowerCase());
-      const matchSev = sevFilter === 'All' || sev.toLowerCase() === sevFilter.toLowerCase();
-      return matchSearch && matchSev;
-    });
-  }, [incidents, search, sevFilter]);
-
-  const [headerDatePreset, setHeaderDatePreset] = useState('30d');
-  const [customDateRange, setCustomDateRange] = useState(null);
+  }, [loadData]);
 
   const handleHeaderDateChange = (val) => {
     if (typeof val === 'string') {
@@ -69,67 +63,154 @@ export default function Incidents() {
     }
   };
 
+  const kpiMap = useMemo(() => {
+    const map = {};
+    kpis.forEach(k => { map[k.id] = k; });
+    return map;
+  }, [kpis]);
+
+  const openCount = kpiMap.open?.value ?? incidents.filter(i => (i.status || i.state || '').toLowerCase() === 'open').length;
+  const triageCount = kpiMap.triage?.value ?? incidents.filter(i => (i.status || i.state || '').toLowerCase() === 'triage').length;
+  const criticalCount = kpiMap.critical?.value ?? incidents.filter(i => (i.severity || '').toLowerCase() === 'critical').length;
+  const resolvedCount = kpiMap.resolved?.value ?? incidents.filter(i => (i.status || i.state || '').toLowerCase() === 'resolved').length;
+
+  const filtered = useMemo(() => {
+    return incidents.filter(inc => {
+      const title = inc.title ?? inc.pipeline_name ?? '';
+      const desc = inc.description ?? inc.error_message ?? '';
+      const pName = inc.pipeline_name ?? '';
+      const sev = inc.severity ?? 'Critical';
+
+      const matchSearch = !search ||
+        title.toLowerCase().includes(search.toLowerCase()) ||
+        desc.toLowerCase().includes(search.toLowerCase()) ||
+        pName.toLowerCase().includes(search.toLowerCase());
+
+      const matchSev = sevFilter === 'All' || sev.toLowerCase() === sevFilter.toLowerCase();
+      return matchSearch && matchSev;
+    });
+  }, [incidents, search, sevFilter]);
+
   return (
     <div className="fade-in">
       <PageHeader
         title="Incidents"
-        subtitle="Track and manage all data pipeline incidents."
+        subtitle="Track, triage and resolve active pipeline incidents, SLA breaches and run failures."
         onRefresh={loadData}
         onDateChange={handleHeaderDateChange}
       />
 
       <div className="page-body">
-        {/* Top 4 KPI Cards (Live Real Backend Data) */}
+        {/* 4 KPI Cards */}
         <div className="kpi-grid-4">
           <div className="kpi-card">
-            <div className="kpi-label">Active Open Incidents</div>
-            <div className="kpi-value" style={{ color: '#EF4444', marginTop: 4 }}>{openCount}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Requiring immediate attention</div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-label">Critical Severity</div>
-            <div className="kpi-value" style={{ color: '#F59E0B', marginTop: 4 }}>{incidents.length}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Pipeline runtime aborts</div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-label">Resolved Incidents</div>
-            <div className="kpi-value" style={{ color: '#10B981', marginTop: 4 }}>{resolvedCount}</div>
-            <div style={{ fontSize: 11, color: '#10B981', fontWeight: 600, marginTop: 2 }}>Successfully recovered</div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-label">Total Logged Incidents</div>
-            <div className="kpi-value" style={{ color: '#6366F1', marginTop: 4 }}>{incidents.length}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Across all historical runs</div>
-          </div>
-        </div>
-
-        {/* Incidents Table Card */}
-        <div className="card mt-4">
-          <div className="card-header">
-            <span className="card-title">Live Pipeline Incidents ({filtered.length})</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div className="search-box">
-                <Search size={13} />
-                <input
-                  type="text"
-                  placeholder="Search error or pipeline..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  style={{ width: 220, height: 30 }}
-                />
+            <div className="kpi-card-header">
+              <div className="kpi-icon" style={{ background: '#FEF2F2', color: '#EF4444' }}>
+                <AlertTriangle size={18} />
               </div>
-              <select className="select-control" value={sevFilter} onChange={e => setSevFilter(e.target.value)}>
-                <option value="All">All Severity</option>
-                <option value="Critical">Critical</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
+              <span className="kpi-label">Active Open Incidents</span>
+            </div>
+            <div className="kpi-value" style={{ color: openCount > 0 ? '#EF4444' : '#10B981', marginTop: 4 }}>
+              {kpiMap.open?.display || openCount}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              {openCount === 0 ? 'No active incidents' : 'Requiring immediate attention'}
             </div>
           </div>
 
-          {loading ? (
-            <LoadingSpinner />
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <div className="kpi-icon" style={{ background: '#FFFBEB', color: '#F59E0B' }}>
+                <AlertCircle size={18} />
+              </div>
+              <span className="kpi-label">In Triage</span>
+            </div>
+            <div className="kpi-value" style={{ color: triageCount > 0 ? '#F59E0B' : '#10B981', marginTop: 4 }}>
+              {kpiMap.triage?.display || triageCount}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              Investigating root cause
+            </div>
+          </div>
+
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <div className="kpi-icon" style={{ background: '#FEF2F2', color: '#EF4444' }}>
+                <Shield size={18} />
+              </div>
+              <span className="kpi-label">Critical Severity</span>
+            </div>
+            <div className="kpi-value" style={{ color: criticalCount > 0 ? '#EF4444' : '#10B981', marginTop: 4 }}>
+              {kpiMap.critical?.display || criticalCount}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              High-priority alerts
+            </div>
+          </div>
+
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <CheckCircle size={18} />
+              </div>
+              <span className="kpi-label">Resolved Incidents</span>
+            </div>
+            <div className="kpi-value" style={{ color: '#10B981', marginTop: 4 }}>
+              {kpiMap.resolved?.display || resolvedCount}
+            </div>
+            <div style={{ fontSize: 11, color: '#10B981', fontWeight: 600, marginTop: 2 }}>
+              Auto-mitigated or resolved
+            </div>
+          </div>
+        </div>
+
+        {/* Filters Toolbar */}
+        <div className="filters-bar mt-4">
+          <div className="search-box">
+            <Search size={14} />
+            <input
+              type="text"
+              placeholder="Search incidents by title, description or pipeline..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="filter-select">
+            <label>Severity</label>
+            <select
+              className="select-control"
+              value={sevFilter}
+              onChange={e => setSevFilter(e.target.value)}
+            >
+              <option value="All">All Severities</option>
+              <option value="Critical">Critical</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Incidents Table / List */}
+        <div className="card mt-4">
+          <div className="card-header">
+            <div>
+              <span className="card-title">Active Incident Log</span>
+              <span className="card-subtitle">Real-time alerts, blast radius analysis, and RCA states</span>
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div style={{ padding: '48px 16px', textAlign: 'center' }}>
+              <CheckCircle size={36} style={{ color: '#10B981', margin: '0 auto 12px', display: 'block' }} />
+              <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)', marginBottom: 4 }}>
+                All Data Systems Operating Normally
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                There are currently 0 active or critical incidents detected across all monitored pipelines.
+              </div>
+            </div>
           ) : (
             <div className="table-wrapper">
               <table className="vithi-table">
@@ -137,50 +218,32 @@ export default function Incidents() {
                   <tr>
                     <th>Incident</th>
                     <th>Pipeline</th>
-                    <th>Error Details / Trace</th>
                     <th>Severity</th>
-                    <th>State</th>
-                    <th>Timestamp</th>
+                    <th>Status</th>
+                    <th>Detected At</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-secondary)' }}>
-                        No incidents match your search.
+                  {filtered.map((inc, i) => (
+                    <tr key={inc.id || i}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{inc.title || 'Pipeline Run Failure'}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{inc.description || inc.error_message}</div>
+                      </td>
+                      <td><span className="tag">{inc.pipeline_name || 'Pipeline'}</span></td>
+                      <td>
+                        <span className={`status-pill ${inc.severity === 'Critical' ? 'critical' : 'warning'}`}>
+                          {inc.severity || 'Medium'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="status-pill warning">{inc.status || inc.state || 'OPEN'}</span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>
+                        {fmtTime(inc.opened_at || inc.start_time)}
                       </td>
                     </tr>
-                  ) : (
-                    filtered.map(inc => (
-                      <tr key={inc.id}>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <AlertTriangle size={15} color="#EF4444" />
-                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                              {inc.title ?? `${inc.pipeline_name} failure`}
-                            </span>
-                          </div>
-                        </td>
-                        <td style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{inc.pipeline_name}</td>
-                        <td style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {inc.description ?? 'Database execution failure'}
-                        </td>
-                        <td>
-                          <span className="status-pill critical">
-                            {inc.severity ?? 'Critical'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`status-pill ${inc.state === 'OPEN' ? 'warning' : 'good'}`}>
-                            {inc.state ?? 'OPEN'}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                          {fmtTime(inc.start_time ?? inc.created_at)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>

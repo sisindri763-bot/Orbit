@@ -4,7 +4,7 @@ export const getBaseUrl = () => {
   if (typeof window !== 'undefined' && localStorage.getItem('API_BASE_URL')) {
     return localStorage.getItem('API_BASE_URL');
   }
-  return import.meta.env.VITE_API_BASE_URL || 'https://vithi-observability-dasboard.vercel.app';
+  return import.meta.env.VITE_API_BASE_URL || 'http://40.192.71.150:8002';
 };
 
 const api = axios.create({
@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Helper for resilient GET requests (tries path then fallback path if 404)
+// Helper for resilient GET requests (tries v1 path then legacy fallback)
 const safeGet = async (path, fallbackPath, params = {}) => {
   try {
     const res = await api.get(path, { params });
@@ -32,65 +32,122 @@ const safeGet = async (path, fallbackPath, params = {}) => {
   }
 };
 
+// ── Health & System ──────────────────────────────────────────────────────────
+export const fetchSystemHealth = () =>
+  safeGet('/api/v1/health', '/health');
+
+export const fetchFilters = (params = {}) =>
+  safeGet('/api/v1/filters', null, params);
+
 // ── Overview ────────────────────────────────────────────────────────────────
+export const fetchOverview = (params = {}) =>
+  safeGet('/api/v1/overview', '/v1/dashboard/overview', params);
+
 export const fetchOverviewKPIs = (params = {}) =>
-  safeGet('/api/overview/kpis', '/api/v1/overview/kpis', params);
+  safeGet('/api/v1/overview/kpis', '/api/overview/kpis', params);
 
 export const fetchOverviewCharts = (params = {}) =>
-  safeGet('/api/overview/charts', '/api/v1/overview/charts', params);
+  safeGet('/api/v1/overview/charts', '/api/overview/charts', params);
 
 export const fetchOverviewHealth = (params = {}) =>
-  safeGet('/api/overview/health', '/api/v1/overview/health', params);
+  safeGet('/api/v1/overview/health', '/api/overview/health', params);
 
 export const fetchRecentIncidents = (params = {}) =>
-  safeGet('/api/overview/recent-incidents', '/api/v1/overview/recent-incidents', params);
+  safeGet('/api/v1/overview/recent-incidents', '/api/overview/recent-incidents', params);
 
 export const fetchPipelineMonitoring = (params = {}) =>
-  safeGet('/api/overview/pipeline-monitoring', '/api/v1/overview/pipelines', params);
+  safeGet('/api/v1/overview/pipelines', '/api/overview/pipeline-monitoring', params);
 
 // ── Pipelines ────────────────────────────────────────────────────────────────
 export const fetchPipelines = (params = {}) =>
-  safeGet('/api/pipelines', '/api/v1/pipelines', params);
+  safeGet('/api/v1/pipelines', '/api/pipelines', params);
+
+export const fetchPipelineCatalog = (params = {}) =>
+  safeGet('/api/v1/pipelines/catalog', null, params);
+
+export const fetchPipelineDetail = (pid) =>
+  safeGet(`/api/v1/pipelines/${pid}`, `/api/pipelines/${pid}`);
 
 export const fetchPipelineRuns = (pid, params = {}) =>
-  safeGet(`/api/pipelines/${pid}/runs`, `/api/v1/pipelines/${pid}/runs`, params);
+  safeGet(`/api/v1/pipelines/${pid}/runs`, `/api/pipelines/${pid}/runs`, params);
+
+export const fetchPipelineBindings = (pid) =>
+  safeGet(`/api/v1/pipelines/${pid}/bindings`, null);
+
+export const fetchPipelineMonitors = (pid) =>
+  safeGet(`/api/v1/pipelines/${pid}/monitors`, `/v1/monitors?pipeline_id=${pid}`);
 
 // ── Data Observability ───────────────────────────────────────────────────────
 export const fetchFreshness = (params = {}) =>
-  safeGet('/api/observability/freshness', '/api/v1/observability/freshness', params);
+  safeGet('/api/v1/observability/freshness', '/api/observability/freshness', params);
 
 export const fetchVolume = (params = {}) =>
-  safeGet('/api/observability/volume', '/api/v1/observability/volume', params);
+  safeGet('/api/v1/observability/volume', '/api/observability/volume', params);
 
 export const fetchSchema = (params = {}) =>
-  safeGet('/api/observability/schema', '/api/v1/observability/schema', params);
+  safeGet('/api/v1/observability/schema', '/api/observability/schema', params);
 
 export const fetchDataQuality = (params = {}) =>
-  safeGet('/api/observability/data-quality', '/api/v1/observability/quality', params);
+  safeGet('/api/v1/observability/quality', '/api/observability/data-quality', params);
 
 export const fetchMetrics = (params = {}) =>
-  safeGet('/api/observability/metrics', '/api/v1/metrics', params);
+  safeGet('/api/v1/metrics', '/api/observability/metrics', params);
 
 // ── Lineage ──────────────────────────────────────────────────────────────────
 export const fetchLineage = (params = {}) =>
-  safeGet('/api/lineage', '/api/v1/lineage', params);
+  safeGet('/api/v1/lineage', '/api/lineage', params);
+
+export const fetchLineageDetail = (pid) =>
+  safeGet(`/api/v1/lineage/${pid}`, null);
 
 // ── Incidents ────────────────────────────────────────────────────────────────
 export const fetchIncidents = (params = {}) =>
-  safeGet('/api/incidents', '/api/v1/incidents', params);
+  safeGet('/api/v1/incidents', '/api/incidents', params);
 
-// ── Logs ─────────────────────────────────────────────────────────────────────
+export const fetchIncidentDetail = (id) =>
+  safeGet(`/api/v1/incidents/${id}`, null);
+
+// ── Logs & RCA ───────────────────────────────────────────────────────────────
 export const fetchLogs = (params = {}) =>
-  safeGet('/api/logs', '/api/v1/logs', params);
+  safeGet('/api/v1/logs', '/api/logs', params);
 
 export const fetchRunDetail = (runId) =>
-  safeGet(`/api/runs/${runId}`, `/api/v1/runs/${runId}`);
+  safeGet(`/api/v1/runs/${runId}`, `/api/runs/${runId}`);
 
-// ── Alerts ───────────────────────────────────────────────────────────────────
+export const fetchRcaContext = (runId) =>
+  safeGet(`/api/v1/runs/${runId}/rca-context`, null);
+
+// ── Alerts & Monitors ────────────────────────────────────────────────────────
 export const fetchAlerts = (params = {}) =>
-  safeGet('/api/alerts', '/api/v1/alerts', params).catch(() => ({ items: [] }));
+  safeGet('/api/v1/alerts', '/api/alerts', params).catch(() => ({ items: [] }));
 
-// ── Convenience aliases ───────────────────────────────────────────────────────
+export const fetchMonitors = (params = {}) =>
+  safeGet('/v1/monitors', null, params).catch(() => ({ items: [] }));
+
+export const fetchDqRules = (params = {}) =>
+  safeGet('/v1/dq-rules', null, params).catch(() => ({ items: [] }));
+
+// ── Tools & Connectors ───────────────────────────────────────────────────────
+export const fetchTools = (params = {}) =>
+  safeGet('/api/v1/tools', '/v1/tools', params);
+
+export const fetchConnectorTypes = () =>
+  safeGet('/api/v1/connectors/types', '/v1/tools/types');
+
+export const testToolConnection = (toolId) =>
+  api.post(`/v1/tools/${toolId}/test`).then(r => r.data);
+
+// ── Operations & Triggers ────────────────────────────────────────────────────
+export const triggerSync = (payload = {}) =>
+  api.post('/v1/sync', payload).then(r => r.data);
+
+export const evaluateMonitors = () =>
+  api.post('/api/v1/ops/evaluate-monitors').then(r => r.data);
+
+export const evaluateDqRules = (pipelineId) =>
+  api.post('/api/v1/ops/evaluate-dq-rules', null, { params: pipelineId ? { pipeline_id: pipelineId } : {} }).then(r => r.data);
+
+// ── Convenience Aliases ──────────────────────────────────────────────────────
 export const fetchHealth = fetchOverviewHealth;
 
 export default api;
