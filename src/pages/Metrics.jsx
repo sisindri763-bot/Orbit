@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Clock, Play, XCircle, CheckCircle, Activity,
-  LineChart as LucideLineChart, RefreshCw, Download, Calendar, MoreVertical,
+  RefreshCw, Download, Calendar, MoreVertical,
   ArrowUpRight, ArrowDownRight, Database, GitBranch, Search, Filter, Shield,
   Zap, Gauge, BarChart2, TrendingUp, CheckCircle2, AlertTriangle, Layers,
-  Timer, Cpu, Check, FileSpreadsheet, ArrowRight, ExternalLink, Sliders
+  Timer, Cpu, Check, FileSpreadsheet, ArrowRight, ExternalLink, Sliders, ChevronDown
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -26,22 +26,22 @@ export default function Metrics() {
   const [chartsData, setChartsData] = useState(null);
   const [pipelines, setPipelines] = useState([]);
 
-  // Top Global Filters
+  // Modern Enterprise Filters
   const [selectedPipeline, setSelectedPipeline] = useState('All Pipelines');
   const [selectedStatus, setSelectedStatus] = useState('All Statuses');
   const [selectedTool, setSelectedTool] = useState('All Tools');
-  const [selectedPreset, setSelectedPreset] = useState('all');
   const [search, setSearch] = useState('');
+  const [headerDatePreset, setHeaderDatePreset] = useState('all');
   const [customDateRange, setCustomDateRange] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
-      if (selectedPreset && selectedPreset !== 'all' && selectedPreset !== 'custom') {
-        params.preset = selectedPreset;
+      if (headerDatePreset && headerDatePreset !== 'all' && headerDatePreset !== 'custom') {
+        params.preset = headerDatePreset;
       }
-      if (selectedPreset === 'custom' && customDateRange) {
+      if (headerDatePreset === 'custom' && customDateRange) {
         params.start_date = customDateRange.start;
         params.end_date = customDateRange.end;
       }
@@ -64,7 +64,7 @@ export default function Metrics() {
     } finally {
       setLoading(false);
     }
-  }, [selectedPreset, customDateRange, selectedPipeline, selectedTool]);
+  }, [headerDatePreset, customDateRange, selectedPipeline, selectedTool]);
 
   useEffect(() => {
     loadData();
@@ -72,10 +72,10 @@ export default function Metrics() {
 
   const handleHeaderDateChange = (val) => {
     if (typeof val === 'string') {
-      setSelectedPreset(val);
+      setHeaderDatePreset(val);
       setCustomDateRange(null);
     } else if (val && val.start && val.end) {
-      setSelectedPreset('custom');
+      setHeaderDatePreset('custom');
       setCustomDateRange(val);
     }
   };
@@ -88,7 +88,7 @@ export default function Metrics() {
       {
         pipeline_id: '3794bea7-75b1-4eba-b0cc-bd253419aafa',
         pipeline_name: 'inventory_etl',
-        tool: 'dbt',
+        tool: 'dbt Cloud',
         status: 'Degraded',
         status_key: 'degraded',
         last_run_at: '2026-09-02 08:09:34',
@@ -103,7 +103,7 @@ export default function Metrics() {
     ];
   }, [metricsData]);
 
-  // Apply Global Filters to Pipeline Items
+  // Apply Global Filters across entire page
   const filteredPipelines = useMemo(() => {
     return rawPipelineItems.filter(p => {
       const matchSearch = !search || p.pipeline_name.toLowerCase().includes(search.toLowerCase());
@@ -117,7 +117,7 @@ export default function Metrics() {
     });
   }, [rawPipelineItems, search, selectedPipeline, selectedTool, selectedStatus]);
 
-  // Recalculate KPIs based on filtered context
+  // Dynamically calculate KPIs based on active filters
   const dynamicKPIs = useMemo(() => {
     const total = filteredPipelines.length;
     if (total === 0) {
@@ -127,7 +127,6 @@ export default function Metrics() {
         totalRuns: 0,
         failedRuns: 0,
         avgFreshness: 'N/A',
-        runFrequency: '0.00 runs/hr'
       };
     }
 
@@ -142,7 +141,6 @@ export default function Metrics() {
       totalRuns: sumRuns,
       failedRuns: sumRuns - sumSuccess,
       avgFreshness: `${(sumFreshness / total).toFixed(1)}h`,
-      runFrequency: '0.01 runs/hr'
     };
   }, [filteredPipelines]);
 
@@ -159,14 +157,14 @@ export default function Metrics() {
     ];
   }, [dynamicKPIs.avgDuration]);
 
-  // Foolproof Donut Chart Data (Guaranteed to render with vibrant colors)
+  // Donut Chart Data (Guaranteed rendering)
   const statusChartData = useMemo(() => {
     const successCount = dynamicKPIs.totalRuns - dynamicKPIs.failedRuns;
     const failedCount = dynamicKPIs.failedRuns;
     const total = dynamicKPIs.totalRuns || 1;
 
     return [
-      { name: 'Success', value: successCount > 0 ? successCount : (failedCount === 0 ? 1 : 0), color: '#10B981', pct: `${Math.round(((successCount || 1) / total) * 100)}%` },
+      { name: 'Success', value: successCount > 0 ? successCount : 1, color: '#10B981', pct: `${Math.round(((successCount || 1) / total) * 100)}%` },
       { name: 'Failed', value: failedCount, color: '#EF4444', pct: `${Math.round((failedCount / total) * 100)}%` },
       { name: 'Running', value: 0, color: '#F59E0B', pct: '0%' },
       { name: 'Cancelled', value: 0, color: '#94A3B8', pct: '0%' },
@@ -183,92 +181,97 @@ export default function Metrics() {
       />
 
       <div className="page-body">
-        {/* ── 1. GLOBAL FILTERS BAR (AT THE VERY TOP) ─────────────────────────── */}
-        <div className="filters-bar" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
-          <div className="filter-select">
-            <label>Pipeline</label>
-            <select
-              className="select-control"
-              value={selectedPipeline}
-              onChange={e => setSelectedPipeline(e.target.value)}
+        {/* ── 1. MODERN ENTERPRISE FILTERS TOOLBAR (TOP) ──────────────────────── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, flexWrap: 'wrap', marginBottom: 18, padding: '10px 14px',
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {/* Pipeline Pill */}
+            <div className="enterprise-filter-pill">
+              <GitBranch size={13} color="#10B981" />
+              <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Pipeline:</span>
+              <select
+                className="enterprise-filter-select"
+                value={selectedPipeline}
+                onChange={e => setSelectedPipeline(e.target.value)}
+              >
+                <option value="All Pipelines">All Pipelines ({pipelines.length || 1})</option>
+                {pipelines.map(p => (
+                  <option key={p.pipeline_id || p.pipeline_name} value={p.pipeline_name}>
+                    {p.pipeline_name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={12} color="var(--text-muted)" />
+            </div>
+
+            {/* Tool Engine Pill */}
+            <div className="enterprise-filter-pill">
+              <Zap size={13} color="#6366F1" />
+              <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Engine:</span>
+              <select
+                className="enterprise-filter-select"
+                value={selectedTool}
+                onChange={e => setSelectedTool(e.target.value)}
+              >
+                <option value="All Tools">All Tools</option>
+                <option value="dbt">dbt Cloud</option>
+                <option value="snowflake">Snowflake</option>
+              </select>
+              <ChevronDown size={12} color="var(--text-muted)" />
+            </div>
+
+            {/* Health Status Pill */}
+            <div className="enterprise-filter-pill">
+              <Shield size={13} color="#F59E0B" />
+              <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Status:</span>
+              <select
+                className="enterprise-filter-select"
+                value={selectedStatus}
+                onChange={e => setSelectedStatus(e.target.value)}
+              >
+                <option value="All Statuses">All Statuses</option>
+                <option value="Success">Success (100%)</option>
+                <option value="Degraded">Degraded (Freshness)</option>
+                <option value="Failed">Failed (0)</option>
+              </select>
+              <ChevronDown size={12} color="var(--text-muted)" />
+            </div>
+
+            {/* Search Input */}
+            <div className="search-box" style={{ width: 220 }}>
+              <Search size={13} />
+              <input
+                type="text"
+                placeholder="Search pipelines..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ height: 32, fontSize: 12, paddingLeft: 30 }}
+              />
+            </div>
+          </div>
+
+          {(selectedPipeline !== 'All Pipelines' || selectedTool !== 'All Tools' || selectedStatus !== 'All Statuses' || search) && (
+            <button
+              className="clear-filters-btn"
+              onClick={() => {
+                setSelectedPipeline('All Pipelines');
+                setSelectedTool('All Tools');
+                setSelectedStatus('All Statuses');
+                setSearch('');
+              }}
+              style={{ fontSize: 12, fontWeight: 600, color: '#EF4444' }}
             >
-              <option value="All Pipelines">All Pipelines ({pipelines.length || 1})</option>
-              {pipelines.map(p => (
-                <option key={p.pipeline_id || p.pipeline_name} value={p.pipeline_name}>
-                  {p.pipeline_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="filter-select">
-            <label>Health Status</label>
-            <select
-              className="select-control"
-              value={selectedStatus}
-              onChange={e => setSelectedStatus(e.target.value)}
-            >
-              <option value="All Statuses">All Statuses</option>
-              <option value="Success">Success (100%)</option>
-              <option value="Degraded">Degraded (Freshness SLA)</option>
-              <option value="Failed">Failed (0)</option>
-            </select>
-          </div>
-
-          <div className="filter-select">
-            <label>Tool Engine</label>
-            <select
-              className="select-control"
-              value={selectedTool}
-              onChange={e => setSelectedTool(e.target.value)}
-            >
-              <option value="All Tools">All Tools</option>
-              <option value="dbt">dbt Cloud</option>
-              <option value="snowflake">Snowflake</option>
-            </select>
-          </div>
-
-          <div className="filter-select">
-            <label>Date Range Period</label>
-            <select
-              className="select-control"
-              value={selectedPreset}
-              onChange={e => setSelectedPreset(e.target.value)}
-            >
-              <option value="all">All Time (History)</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="7d">Last 7 Days</option>
-              <option value="24h">Last 24 Hours</option>
-            </select>
-          </div>
-
-          <div className="search-box" style={{ flex: 1, minWidth: 200 }}>
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Search pipelines or tools..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-
-          <button
-            className="clear-filters-btn"
-            style={{ marginLeft: 'auto' }}
-            onClick={() => {
-              setSelectedPipeline('All Pipelines');
-              setSelectedStatus('All Statuses');
-              setSelectedTool('All Tools');
-              setSelectedPreset('all');
-              setSearch('');
-            }}
-          >
-            Reset All
-          </button>
+              Reset Filters
+            </button>
+          )}
         </div>
 
-        {/* ── 2. EXECUTIVE KPI CARDS (DYNAMICS BASED ON TOP FILTERS) ────────────── */}
-        <div className="kpi-grid-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+        {/* ── 2. EXECUTIVE 5-KPI BALANCED GRID (NEVER WRAPS INTO AN ORPHAN CARD) ─ */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 18 }}>
           <div className="kpi-card">
             <div className="kpi-card-header">
               <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
@@ -337,23 +340,10 @@ export default function Metrics() {
               Target sync &lt; 24h
             </div>
           </div>
-
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <Zap size={18} />
-              </div>
-              <span className="kpi-label">Run Frequency</span>
-            </div>
-            <div className="kpi-value">{dynamicKPIs.runFrequency}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              Scheduled batch sync
-            </div>
-          </div>
         </div>
 
         {/* ── 3. VISUAL ANALYTICS & 25 DQ ASSERTIONS SECTION ──────────────────── */}
-        <div className="grid-2 mt-4" style={{ gap: 16 }}>
+        <div className="grid-2" style={{ gap: 16, marginBottom: 18 }}>
           {/* Chart 1: Latency Trend Over Time */}
           <div className="card">
             <div className="card-header">
@@ -426,10 +416,10 @@ export default function Metrics() {
         </div>
 
         {/* 25 Data Quality Assertions Summary Cards */}
-        <div className="card mt-4">
+        <div className="card" style={{ marginBottom: 18 }}>
           <div className="card-header">
             <div>
-              <span className="card-title">Data Quality Assertions Summary (25 Checks)</span>
+              <span className="card-title">Data Quality Assertions Summary (25 Checks Active)</span>
               <span className="card-subtitle">Evaluated dimensions across validity, completeness, uniqueness, and freshness</span>
             </div>
           </div>
@@ -473,8 +463,8 @@ export default function Metrics() {
           </div>
         </div>
 
-        {/* ── 4. MONITORED PIPELINES TABLE (MOVED TO THE BOTTOM) ──────────────── */}
-        <div className="card mt-4">
+        {/* ── 4. MONITORED PIPELINES TABLE (AT THE BOTTOM) ────────────────────── */}
+        <div className="card">
           <div className="card-header">
             <div>
               <span className="card-title">Monitored Pipelines Health & Duration ({filteredPipelines.length})</span>

@@ -748,6 +748,40 @@ html.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
   color: var(--text-muted);
 }
 
+/* ── Modern Enterprise Pill Filter Bar ───────────────────────────────────── */
+.enterprise-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.enterprise-filter-pill:hover {
+  border-color: #10B981;
+  background: var(--bg-card-subtle);
+}
+
+.enterprise-filter-select {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+
 .filter-action-btn {
   display: inline-flex;
   align-items: center;
