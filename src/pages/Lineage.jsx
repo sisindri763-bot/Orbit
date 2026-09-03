@@ -1,484 +1,495 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  Network, Database, GitBranch, ArrowRight, Layers, CheckCircle,
-  AlertTriangle, XCircle, Search, Filter, Plus, MoreVertical,
-  Download, ArrowUpRight, Check, ExternalLink, RefreshCw, Server,
-  Sliders, Shield, Play, Table, Key, Maximize2, ZoomIn, ZoomOut,
-  Info, Eye, X, Code, Sparkles, ChevronRight, Activity, CircleDot, FileText
+  Search, Layers, CheckCircle2, AlertTriangle, Shield,
+  Database, GitBranch, ArrowRight, Table, Key, Maximize2,
+  ZoomIn, ZoomOut, Eye, X, Activity, ChevronRight, Sliders,
+  Clock, TrendingDown, TrendingUp, Info, ExternalLink, RefreshCw
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
-import LoadingSpinner from '../components/LoadingSpinner';
 
-// Node Data representing the real Customers & Inventory Enterprise Pipeline
-const LINEAGE_NODES = [
-  {
-    id: 'node_raw',
-    name: 'RAW.CUSTOMERS',
-    subtitle: 'Source Table',
-    tool: 'Snowflake Table',
-    type: 'source',
-    icon: '❄️',
-    status: 'Healthy',
-    badgeColor: '#059669',
-    badgeBg: '#ECFDF5',
-    themeColor: '#3B82F6',
-    headerBg: '#EFF6FF',
-    borderColor: '#93C5FD',
-    x: 20,
-    y: 40,
-    columns: [
-      { id: 'col_id', name: 'customer_id (PK)', pk: true, type: 'BIGINT', desc: 'Unique identifier of customer' },
-      { id: 'col_name', name: 'name', pk: false, type: 'VARCHAR', desc: 'Customer full legal name' },
-      { id: 'col_email', name: 'email', pk: false, type: 'VARCHAR', desc: 'Primary contact email address' },
-      { id: 'col_phone', name: 'phone', pk: false, type: 'VARCHAR', desc: 'Contact phone number' },
-      { id: 'col_created', name: 'created_at', pk: false, type: 'TIMESTAMP', desc: 'Account creation timestamp' },
-      { id: 'col_updated', name: 'updated_at', pk: false, type: 'TIMESTAMP', desc: 'Last record update timestamp' },
-      { id: 'col_country', name: 'country', pk: false, type: 'VARCHAR', desc: 'ISO country code' },
-      { id: 'col_status', name: 'status', pk: false, type: 'VARCHAR', desc: 'Account activation status' },
-    ]
-  },
-  {
-    id: 'node_stg',
-    name: 'STG_CUSTOMERS',
-    subtitle: 'dbt Model',
-    tool: 'dbt Model',
-    type: 'transform',
-    icon: '🟧',
-    status: 'Success',
-    badgeColor: '#059669',
-    badgeBg: '#ECFDF5',
-    themeColor: '#8B5CF6',
-    headerBg: '#F5F3FF',
-    borderColor: '#C4B5FD',
-    x: 300,
-    y: 40,
-    columns: [
-      { id: 'col_id', name: 'customer_id', pk: true, type: 'BIGINT', desc: 'Standardized customer key' },
-      { id: 'col_name', name: 'customer_name', pk: false, type: 'VARCHAR', desc: 'Sanitized customer name' },
-      { id: 'col_email', name: 'email', pk: false, type: 'VARCHAR', desc: 'Validated email format' },
-      { id: 'col_created', name: 'created_at', pk: false, type: 'TIMESTAMP', desc: 'Created UTC timestamp' },
-      { id: 'col_updated', name: 'updated_at', pk: false, type: 'TIMESTAMP', desc: 'Updated UTC timestamp' },
-      { id: 'col_country', name: 'country', pk: false, type: 'VARCHAR', desc: 'Standardized country name' },
-      { id: 'col_status', name: 'is_active', pk: false, type: 'BOOLEAN', desc: 'Active customer flag' },
-    ]
-  },
-  {
-    id: 'node_int',
-    name: 'INT_CUSTOMER_ACTIVITY',
-    subtitle: 'dbt Model',
-    tool: 'dbt Model',
-    type: 'transform',
-    icon: '🟧',
-    status: 'Success',
-    badgeColor: '#059669',
-    badgeBg: '#ECFDF5',
-    themeColor: '#8B5CF6',
-    headerBg: '#F5F3FF',
-    borderColor: '#C4B5FD',
-    x: 300,
-    y: 410,
-    columns: [
-      { id: 'col_id', name: 'customer_id', pk: true, type: 'BIGINT', desc: 'Customer key' },
-      { id: 'col_act_date', name: 'activity_date', pk: false, type: 'DATE', desc: 'Event date' },
-      { id: 'col_act_type', name: 'activity_type', pk: false, type: 'VARCHAR', desc: 'Interaction type' },
-      { id: 'col_act_cnt', name: 'activity_count', pk: false, type: 'INTEGER', desc: 'Total event interactions' },
-      { id: 'col_created', name: 'created_at', pk: false, type: 'TIMESTAMP', desc: 'Log creation time' },
-      { id: 'col_updated', name: 'updated_at', pk: false, type: 'TIMESTAMP', desc: 'Last activity time' },
-    ]
-  },
-  {
-    id: 'node_dim',
-    name: 'DIM_CUSTOMERS',
-    subtitle: 'dbt Model',
-    tool: 'dbt Model',
-    type: 'transform',
-    icon: '🟧',
-    status: 'Success',
-    badgeColor: '#059669',
-    badgeBg: '#ECFDF5',
-    themeColor: '#8B5CF6',
-    headerBg: '#F5F3FF',
-    borderColor: '#C4B5FD',
-    x: 580,
-    y: 40,
-    columns: [
-      { id: 'col_id', name: 'customer_id (PK)', pk: true, type: 'BIGINT', desc: 'Primary Key dimension identifier' },
-      { id: 'col_name', name: 'full_name', pk: false, type: 'VARCHAR', desc: 'Formatted full name' },
-      { id: 'col_email', name: 'email', pk: false, type: 'VARCHAR', desc: 'Verified customer email' },
-      { id: 'col_country', name: 'country', pk: false, type: 'VARCHAR', desc: 'Billing country code' },
-      { id: 'col_signup', name: 'signup_date', pk: false, type: 'DATE', desc: 'Account registration date' },
-      { id: 'col_updated', name: 'last_updated', pk: false, type: 'TIMESTAMP', desc: 'Dimension refresh timestamp' },
-      { id: 'col_tier', name: 'customer_tier', pk: false, type: 'VARCHAR', desc: 'Calculated tier (Gold/Silver)' },
-      { id: 'col_status', name: 'is_active', pk: false, type: 'BOOLEAN', desc: 'Current active flag' },
-      { id: 'col_source', name: 'record_source', pk: false, type: 'VARCHAR', desc: 'Origin system tag' },
-    ]
-  },
-  {
-    id: 'node_mart',
-    name: 'MART.DIM_CUSTOMERS',
-    subtitle: 'Snowflake Table',
-    tool: 'Snowflake Table',
-    type: 'target',
-    icon: '❄️',
-    status: 'Healthy',
-    badgeColor: '#059669',
-    badgeBg: '#ECFDF5',
-    themeColor: '#10B981',
-    headerBg: '#ECFDF5',
-    borderColor: '#A7F3D0',
-    x: 860,
-    y: 40,
-    columns: [
-      { id: 'col_id', name: 'customer_id (PK)', pk: true, type: 'BIGINT', desc: 'Published Primary Key' },
-      { id: 'col_name', name: 'full_name', pk: false, type: 'VARCHAR', desc: 'Published customer name' },
-      { id: 'col_email', name: 'email', pk: false, type: 'VARCHAR', desc: 'Published customer email' },
-      { id: 'col_country', name: 'country', pk: false, type: 'VARCHAR', desc: 'Customer billing country' },
-      { id: 'col_signup', name: 'signup_date', pk: false, type: 'DATE', desc: 'Registration date' },
-      { id: 'col_updated', name: 'last_updated', pk: false, type: 'TIMESTAMP', desc: 'Warehouse sync timestamp' },
-      { id: 'col_tier', name: 'customer_tier', pk: false, type: 'VARCHAR', desc: 'Loyalty status tier' },
-      { id: 'col_status', name: 'is_active', pk: false, type: 'BOOLEAN', desc: 'Published active status' },
-      { id: 'col_source', name: 'record_source', pk: false, type: 'VARCHAR', desc: 'Data provenance marker' },
-    ]
-  }
+// 14 Real Schema Columns for the Inventory Pipeline
+const SOURCE_COLUMNS = [
+  'RAW_INVENTORY (PK)',
+  'ITEM_NAME',
+  'CATEGORY',
+  'QUANTITY',
+  'UNIT_PRICE',
+  'LOCATION',
+  'SUPPLIER',
+  'LAST_UPDATED',
+  'CURRENCY',
+  'IS_DISCONTINUED',
+  'REORDER_POINT',
+  'SAFETY_STOCK',
+  'INVENTORY_TURNOVER',
+  'TOTAL_VALUATION'
+];
+
+const TARGET_COLUMNS = [
+  'DIM_INVENTORY (PK)',
+  'SKU',
+  'PRODUCT_NAME',
+  'CATEGORY',
+  'QUANTITY_IN_STOCK',
+  'UNIT_PRICE',
+  'WAREHOUSE_LOCATION',
+  'LAST_RESTOCKED_DATE',
+  'STATUS',
+  'CURRENCY',
+  'IS_ACTIVE',
+  'REORDER_REQUIRED',
+  'SAFETY_STOCK_LEVEL',
+  'TOTAL_ASSET_VALUE'
+];
+
+const DBT_STAGES = [
+  { name: 'stg_inventory.sql', dur: '1.2s', desc: 'Type casting & null cleaning' },
+  { name: 'int_inventory_metrics.sql', dur: '2.8s', desc: 'Turnover & safety stock aggregations' },
+  { name: 'dim_inventory.sql', dur: '4.1s', desc: 'Dimension modeling & surrogate keys' },
+  { name: '20 dbt Data Tests', dur: '4.6s', desc: '20/20 assertion checks pass' },
+  { name: 'Snowflake Mart Load', dur: '1.0s', desc: 'Merge into FINAL_DATA' },
 ];
 
 export default function Lineage() {
   const [level, setLevel] = useState('column'); // 'table' | 'column'
-  const [selectedColumnId, setSelectedColumnId] = useState('col_id');
-  const [showOnlyAffected, setShowOnlyAffected] = useState(false);
+  const [selectedPipeline, setSelectedPipeline] = useState('inventory_etl');
+  const [selectedNode, setSelectedNode] = useState('target'); // 'source' | 'dbt' | 'target'
+  const [selectedColumnIndex, setSelectedColumnIndex] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [search, setSearch] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(true);
 
-  // Lineage Breadcrumb Information for Right Drawer
-  const selectedDetails = useMemo(() => {
-    return {
-      name: selectedColumnId === 'col_id' ? 'customer_id' : selectedColumnId === 'col_name' ? 'customer_name' : 'email',
-      type: selectedColumnId === 'col_id' ? 'BIGINT' : 'VARCHAR',
-      desc: selectedColumnId === 'col_id' ? 'Unique identifier of customer' : 'Customer profile attribute',
-      lastUpdated: '2 mins ago',
-      quality: 99.8,
-      nulls: '0 (0%)',
-      distinct: '1,265,543',
-      status: 'Healthy',
-      sql: selectedColumnId === 'col_id'
-        ? 'CAST(customer_id AS BIGINT)'
-        : selectedColumnId === 'col_name'
-        ? 'TRIM(name) AS full_name'
-        : 'LOWER(TRIM(email)) AS email',
-      transformationType: 'CAST',
-      computedBy: 'dbt Model: stg_customers.sql'
-    };
-  }, [selectedColumnId]);
+  // Filter columns based on search
+  const filteredSourceCols = useMemo(() => {
+    if (!search) return SOURCE_COLUMNS;
+    return SOURCE_COLUMNS.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+  }, [search]);
+
+  const filteredTargetCols = useMemo(() => {
+    if (!search) return TARGET_COLUMNS;
+    return TARGET_COLUMNS.filter(c => c.toLowerCase().includes(search.toLowerCase()));
+  }, [search]);
 
   return (
     <div className="fade-in">
       <PageHeader
-        title="Lineage"
-        subtitle="Track data flow and transformations across your data estate"
+        title="Lineage Explorer"
+        subtitle="Track data flow, column-level transformations, and downstream impact across your data estate."
       />
 
       <div className="page-body">
-        {/* ── TOP CONTROL BAR (MATCHING REFERENCE SCREENSHOT) ─────────────────── */}
+        {/* ── TOP CONTROL BAR (PIXEL-PERFECT MATCH TO REFERENCE IMAGE) ────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: 12, flexWrap: 'wrap', padding: '10px 16px', background: 'var(--bg-card)',
           border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16,
           boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
         }}>
-          {/* Level Switcher (Table Level vs Column Level) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#F1F5F9', padding: 3, borderRadius: 8 }}>
-            <button
-              onClick={() => setLevel('table')}
-              style={{
-                padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.15s',
-                background: level === 'table' ? '#FFFFFF' : 'transparent',
-                color: level === 'table' ? '#0F172A' : '#64748B',
-                boxShadow: level === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-              }}
-            >
-              Table Level
-            </button>
-            <button
-              onClick={() => setLevel('column')}
-              style={{
-                padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.15s',
-                background: level === 'column' ? '#FFFFFF' : 'transparent',
-                color: level === 'column' ? '#4F46E5' : '#64748B',
-                boxShadow: level === 'column' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-              }}
-            >
-              Column Level
-            </button>
-          </div>
-
-          {/* Lineage Type Legend */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 12 }}>
-            <span style={{ fontWeight: 600, color: '#64748B' }}>Lineage Type:</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3B82F6' }} />
-              <span style={{ color: '#0F172A', fontWeight: 500 }}>Source</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#8B5CF6' }} />
-              <span style={{ color: '#0F172A', fontWeight: 500 }}>Transformation</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }} />
-              <span style={{ color: '#0F172A', fontWeight: 500 }}>Target</span>
-            </div>
-          </div>
-
-          {/* Search Box */}
-          <div className="search-box" style={{ width: 220 }}>
-            <Search size={13} />
-            <input
-              type="text"
-              placeholder="Search dataset, table or column..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ height: 32, fontSize: 12, paddingLeft: 30 }}
-            />
-          </div>
-
-          {/* Controls: Show Affected Toggle, Expand All, Zoom */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748B', cursor: 'pointer' }}>
-              <span>Show Only Affected</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            {/* Search Input */}
+            <div className="search-box" style={{ width: 240 }}>
+              <Search size={13} />
               <input
-                type="checkbox"
-                checked={showOnlyAffected}
-                onChange={e => setShowOnlyAffected(e.target.checked)}
-                style={{ cursor: 'pointer' }}
+                type="text"
+                placeholder="Search tables, models, or columns..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ height: 32, fontSize: 12, paddingLeft: 30 }}
               />
-            </label>
+            </div>
+
+            {/* Pipeline Selector Dropdown */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Pipeline:</span>
+              <select
+                className="select-control"
+                value={selectedPipeline}
+                onChange={e => setSelectedPipeline(e.target.value)}
+                style={{ height: 32, fontWeight: 600, padding: '0 10px' }}
+              >
+                <option value="inventory_etl">inventory_etl</option>
+              </select>
+            </div>
+
+            {/* Segment Level Toggle ([Table Level] | [Column Level (Active)]) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg-card-subtle)', padding: 3, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <button
+                onClick={() => setLevel('table')}
+                style={{
+                  padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  background: level === 'table' ? '#10B981' : 'transparent',
+                  color: level === 'table' ? '#FFFFFF' : 'var(--text-secondary)'
+                }}
+              >
+                Table Level
+              </button>
+              <button
+                onClick={() => setLevel('column')}
+                style={{
+                  padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  background: level === 'column' ? '#10B981' : 'transparent',
+                  color: level === 'column' ? '#FFFFFF' : 'var(--text-secondary)'
+                }}
+              >
+                Column Level (Active)
+              </button>
+            </div>
+
+            {/* Depth Filter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Depth</span>
+              <span style={{
+                background: 'var(--bg-card-subtle)', border: '1px solid var(--border)',
+                padding: '3px 8px', borderRadius: 6, fontWeight: 700, fontSize: 11
+              }}>
+                +2 / -2
+              </span>
+            </div>
+          </div>
+
+          {/* Right Controls: Zoom and Minimap */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="export-btn"
+              onClick={() => setZoomLevel(z => Math.min(130, z + 10))}
+              style={{ fontSize: 11.5, padding: '4px 10px', height: 28, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <ZoomIn size={12} />
+              <span>Zoom in</span>
+            </button>
 
             <button
               className="export-btn"
-              style={{ fontSize: 11.5, padding: '4px 10px', height: 28 }}
+              onClick={() => setZoomLevel(z => Math.max(70, z - 10))}
+              style={{ fontSize: 11.5, padding: '4px 10px', height: 28, display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
-              Expand All
+              <ZoomOut size={12} />
+              <span>Zoom out</span>
             </button>
 
-            {/* Zoom Controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: '#F1F5F9', borderRadius: 6, padding: 2 }}>
-              <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setZoomLevel(z => Math.max(60, z - 10))} title="Zoom Out">
-                <ZoomOut size={12} />
-              </button>
-              <span style={{ fontSize: 11, fontWeight: 600, padding: '0 4px', minWidth: 36, textAlign: 'center' }}>{zoomLevel}%</span>
-              <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setZoomLevel(z => Math.min(140, z + 10))} title="Zoom In">
-                <ZoomIn size={12} />
-              </button>
-              <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setZoomLevel(100)} title="Reset Zoom">
-                <Maximize2 size={12} />
-              </button>
-            </div>
+            <button
+              className="export-btn"
+              onClick={() => setZoomLevel(100)}
+              style={{ fontSize: 11.5, padding: '4px 10px', height: 28, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <Maximize2 size={12} />
+              <span>Fit View</span>
+            </button>
+
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{zoomLevel}%</span>
           </div>
         </div>
 
-        {/* ── CANVAS & DETAILS DRAWER ─────────────────────────────────────────── */}
+        {/* ── MAIN WORKSPACE: CANVAS + RIGHT IMPACT INSPECTOR DRAWER ──────────── */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', position: 'relative' }}>
-          {/* ── INTERACTIVE CANVAS WITH SVG SPLINES ───────────────────────────── */}
+          {/* ── LINEAGE CANVAS ───────────────────────────────────────────────── */}
           <div style={{
-            flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid #E2E8F0',
-            borderRadius: 12, padding: 28, overflowX: 'auto', minHeight: 680, position: 'relative',
-            backgroundImage: 'radial-gradient(#E2E8F0 1px, transparent 1px)',
-            backgroundSize: '20px 20px'
+            flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid var(--border)',
+            borderRadius: 12, padding: '32px 24px', overflowX: 'auto', minHeight: 700, position: 'relative',
+            backgroundImage: 'radial-gradient(#E2E8F0 1.2px, transparent 1.2px)',
+            backgroundSize: '22px 22px'
           }}>
-            {/* SVG Interactive Column-to-Column Connecting Bezier Splines */}
-            <svg
-              style={{
-                position: 'absolute', top: 0, left: 0, width: 1200, height: 700,
-                pointerEvents: 'none', zIndex: 1,
-                transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left'
-              }}
-            >
-              <defs>
-                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#6366F1" floodOpacity="0.4" />
-                </filter>
-              </defs>
-
-              {/* Inactive Splines (Faint Grey Bezier Curves) */}
-              {level === 'column' && (
-                <>
-                  <path d="M 235 140 C 265 140, 275 140, 305 140" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <path d="M 235 162 C 265 162, 275 162, 305 162" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <path d="M 235 184 C 265 184, 275 184, 305 184" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <path d="M 235 206 C 265 206, 275 206, 305 206" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-
-                  <path d="M 515 140 C 545 140, 555 140, 585 140" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <path d="M 515 162 C 545 162, 555 162, 585 162" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <path d="M 515 184 C 545 184, 555 184, 585 184" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-
-                  <path d="M 795 140 C 825 140, 835 140, 865 140" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <path d="M 795 162 C 825 162, 835 162, 865 162" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-
-                  {/* Sub-model branch spline */}
-                  <path d="M 515 480 C 555 480, 555 220, 585 220" fill="none" stroke="#E2E8F0" strokeWidth="1.5" strokeDasharray="3 3" />
-                </>
-              )}
-
-              {/* Active Highlighted Spline for selectedColumnId (Vibrant Purple Glowing Bezier Curve matching screenshot) */}
-              {level === 'column' && selectedColumnId === 'col_id' && (
-                <>
-                  <path
-                    d="M 235 118 C 270 118, 270 118, 305 118"
-                    fill="none"
-                    stroke="#6366F1"
-                    strokeWidth="2.5"
-                    filter="url(#glow)"
-                  />
-                  <circle cx="235" cy="118" r="3.5" fill="#6366F1" />
-                  <circle cx="305" cy="118" r="3.5" fill="#6366F1" />
-
-                  <path
-                    d="M 515 118 C 550 118, 550 118, 585 118"
-                    fill="none"
-                    stroke="#6366F1"
-                    strokeWidth="2.5"
-                    filter="url(#glow)"
-                  />
-                  <circle cx="515" cy="118" r="3.5" fill="#6366F1" />
-                  <circle cx="585" cy="118" r="3.5" fill="#6366F1" />
-
-                  <path
-                    d="M 795 118 C 830 118, 830 118, 865 118"
-                    fill="none"
-                    stroke="#6366F1"
-                    strokeWidth="2.5"
-                    filter="url(#glow)"
-                  />
-                  <circle cx="795" cy="118" r="3.5" fill="#6366F1" />
-                  <circle cx="865" cy="118" r="3.5" fill="#6366F1" />
-                </>
-              )}
-            </svg>
-
-            {/* Nodes Container Layout */}
-            <div style={{
-              position: 'relative', minWidth: 1100, minHeight: 620, zIndex: 2,
-              transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left',
-              transition: 'transform 0.15s ease'
-            }}>
-              {LINEAGE_NODES.map(node => (
-                <div
-                  key={node.id}
+            {/* ── VIEW 1: COLUMN-LEVEL LINEAGE (MATCHING IMAGE 1) ────────────── */}
+            {level === 'column' && (
+              <div style={{
+                position: 'relative', display: 'flex', alignItems: 'flex-start',
+                justifyContent: 'space-between', gap: 20, minWidth: 840,
+                transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left',
+                transition: 'transform 0.15s ease'
+              }}>
+                {/* SVG Connecting Splines (Connecting left columns to middle dbt to right columns) */}
+                <svg
                   style={{
-                    position: 'absolute', left: node.x, top: node.y, width: 215,
-                    background: '#FFFFFF', borderRadius: 10, border: `1.5px solid ${node.borderColor}`,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.04)', overflow: 'hidden',
-                    transition: 'all 0.15s ease'
+                    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                    pointerEvents: 'none', zIndex: 1
                   }}
                 >
-                  {/* Node Header */}
-                  <div style={{ padding: '10px 12px', background: node.headerBg, borderBottom: `1px solid ${node.borderColor}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 14 }}>{node.icon}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: node.themeColor }}>{node.subtitle}</span>
-                      </div>
-                      <span style={{
-                        fontSize: 9.5, fontWeight: 700, color: node.badgeColor,
-                        background: '#FFFFFF', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--border)'
-                      }}>
-                        ● {node.status}
+                  {/* Left-to-Center Connecting Green Bezier Splines */}
+                  {filteredSourceCols.slice(0, 10).map((_, i) => {
+                    const y1 = 182 + i * 28;
+                    const y2 = 182 + Math.min(i, 4) * 32;
+
+                    return (
+                      <g key={`l-${i}`}>
+                        <path
+                          d={`M 252 ${y1} C 310 ${y1}, 320 ${y2}, 372 ${y2}`}
+                          fill="none"
+                          stroke="#10B981"
+                          strokeWidth={selectedColumnIndex === i ? 2.5 : 1.5}
+                          opacity={selectedColumnIndex === i ? 1 : 0.6}
+                        />
+                        <circle cx={252} cy={y1} r={3.5} fill="#10B981" />
+                        <circle cx={372} cy={y2} r={3} fill="#10B981" />
+                      </g>
+                    );
+                  })}
+
+                  {/* Center-to-Right Connecting Green Bezier Splines */}
+                  {filteredTargetCols.slice(0, 10).map((_, i) => {
+                    const y1 = 182 + Math.min(i, 4) * 32;
+                    const y2 = 182 + i * 28;
+
+                    return (
+                      <g key={`r-${i}`}>
+                        <path
+                          d={`M 515 ${y1} C 565 ${y1}, 575 ${y2}, 628 ${y2}`}
+                          fill="none"
+                          stroke="#10B981"
+                          strokeWidth={selectedColumnIndex === i ? 2.5 : 1.5}
+                          opacity={selectedColumnIndex === i ? 1 : 0.6}
+                        />
+                        <circle cx={515} cy={y1} r={3} fill="#10B981" />
+                        <circle cx={628} cy={y2} r={3.5} fill="#10B981" />
+                      </g>
+                    );
+                  })}
+                </svg>
+
+                {/* 1. SOURCE TABLE CARD */}
+                <div
+                  onClick={() => setSelectedNode('source')}
+                  style={{
+                    width: 250, background: '#FFFFFF', borderRadius: 10,
+                    border: `1.5px solid ${selectedNode === 'source' ? '#3B82F6' : '#E2E8F0'}`,
+                    boxShadow: selectedNode === 'source' ? '0 0 0 3px rgba(59, 130, 246, 0.15)' : '0 2px 8px rgba(0,0,0,0.04)',
+                    overflow: 'hidden', zIndex: 2, cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ padding: '12px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#3B82F6', background: '#EFF6FF', padding: '2px 8px', borderRadius: 4 }}>
+                        Source table
                       </span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>⋮</span>
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: 12.5, color: '#0F172A' }}>
-                      {node.name}
+
+                    <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A', lineHeight: 1.3 }}>
+                      INVENTORY_ANALYTICS.RAW_DATA.RAW_INVENTORY
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#64748B' }}>
+                      <span>❄️ Snowflake</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, fontSize: 10.5, color: '#64748B' }}>
+                      <span>👥 208 rows</span>
+                      <span>14 columns</span>
                     </div>
                   </div>
 
-                  {/* Node Columns (Column Level View) */}
-                  {level === 'column' && (
-                    <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: '#64748B' }}>
-                        Columns ({node.columns.length})
-                      </span>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {node.columns.map(col => {
-                          const isSelected = selectedColumnId === col.id;
-
-                          return (
-                            <div
-                              key={col.name}
-                              onClick={() => {
-                                setSelectedColumnId(col.id);
-                                setDrawerOpen(true);
-                              }}
-                              style={{
-                                padding: '3px 8px', borderRadius: 4, fontSize: 11,
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                background: isSelected ? '#EDE9FE' : 'transparent',
-                                border: isSelected ? '1px solid #C4B5FD' : '1px solid transparent',
-                                color: isSelected ? '#5B21B6' : '#1E293B',
-                                fontWeight: isSelected ? 700 : 500, cursor: 'pointer',
-                                transition: 'all 0.1s ease'
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ width: 4, height: 4, borderRadius: '50%', background: isSelected ? '#7C3AED' : '#94A3B8' }} />
-                                <span style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{col.name}</span>
-                              </div>
-                              {isSelected && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#7C3AED' }} />}
-                            </div>
-                          );
-                        })}
+                  {/* Columns List with Right Dots */}
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {filteredSourceCols.map((col, idx) => (
+                      <div
+                        key={col}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedColumnIndex(idx);
+                          setSelectedNode('source');
+                        }}
+                        style={{
+                          height: 24, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          color: selectedColumnIndex === idx ? '#047857' : '#1E293B',
+                          fontWeight: selectedColumnIndex === idx ? 700 : 500,
+                          background: selectedColumnIndex === idx ? '#ECFDF5' : 'transparent',
+                          padding: '0 6px', borderRadius: 4
+                        }}
+                      >
+                        <span style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{col}</span>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: selectedColumnIndex === idx ? '#10B981' : '#94A3B8' }} />
                       </div>
-
-                      <div style={{ fontSize: 10, color: '#6366F1', fontWeight: 600, marginTop: 4, textAlign: 'left', cursor: 'pointer' }}>
-                        + View All Columns
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Table Level View */}
-                  {level === 'table' && (
-                    <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                        <span>Role:</span>
-                        <strong style={{ color: '#0F172A' }}>{node.type.toUpperCase()}</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                        <span>Columns:</span>
-                        <strong style={{ color: '#0F172A' }}>{node.columns.length} attributes</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                        <span>Verified Status:</span>
-                        <strong style={{ color: '#10B981' }}>Healthy</strong>
-                      </div>
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Floating Mini-Map Box (Matching Reference Image bottom left) */}
-            <div style={{
-              position: 'absolute', bottom: 16, left: 16, width: 140, height: 75,
-              background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 8,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.06)', padding: 8, display: 'flex',
-              alignItems: 'center', justifyContent: 'space-between', gap: 6, zIndex: 10
-            }}>
-              <div style={{ width: 22, height: 42, background: '#BFDBFE', borderRadius: 3 }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ width: 22, height: 20, background: '#DDD6FE', borderRadius: 3 }} />
-                <div style={{ width: 22, height: 18, background: '#DDD6FE', borderRadius: 3 }} />
+                {/* 2. TRANSFORMATION NODE (dbt-inventory-job) */}
+                <div
+                  onClick={() => setSelectedNode('dbt')}
+                  style={{
+                    width: 220, background: '#FFFFFF', borderRadius: 10,
+                    border: `1.5px solid ${selectedNode === 'dbt' ? '#F97316' : '#E2E8F0'}`,
+                    boxShadow: selectedNode === 'dbt' ? '0 0 0 3px rgba(249, 115, 22, 0.15)' : '0 2px 8px rgba(0,0,0,0.04)',
+                    overflow: 'hidden', zIndex: 2, cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ padding: '12px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#C2410C', background: '#FFF7ED', padding: '2px 8px', borderRadius: 4 }}>
+                        Transformation
+                      </span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>⋮</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: '#0F172A' }}>
+                      <span>🟧</span>
+                      <span>dbt-inventory-job</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4 }}>
+                        ● 20/20 Tests Passed
+                      </span>
+                      <span style={{ fontSize: 10.5, color: '#64748B', display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Clock size={11} /> 15s
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 6 }}>
+                      📁 inventory_analytics
+                    </div>
+                  </div>
+
+                  {/* Stage Columns with Latencies */}
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {DBT_STAGES.map((stg, idx) => (
+                      <div
+                        key={stg.name}
+                        style={{
+                          height: 28, fontSize: 10.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          color: '#334155', fontWeight: 500
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981' }} />
+                          <span style={{ fontFamily: 'monospace' }}>{stg.name}</span>
+                        </div>
+                        <span style={{ color: '#059669', fontWeight: 600 }}>{stg.dur}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. TARGET TABLE CARD (HIGHLIGHTED GREEN BORDER MATCHING IMAGE 1) */}
+                <div
+                  onClick={() => setSelectedNode('target')}
+                  style={{
+                    width: 250, background: '#FFFFFF', borderRadius: 10,
+                    border: '2px solid #10B981',
+                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.2), 0 4px 14px rgba(16, 185, 129, 0.1)',
+                    overflow: 'hidden', zIndex: 2, cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ padding: '12px 14px', background: '#ECFDF5', borderBottom: '1px solid #A7F3D0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#047857', background: '#FFFFFF', padding: '2px 8px', borderRadius: 4, border: '1px solid #A7F3D0' }}>
+                        Target table
+                      </span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>⋮</span>
+                    </div>
+
+                    <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A', lineHeight: 1.3 }}>
+                      INVENTORY_ANALYTICS.FINAL_DATA.DIM_INVENTORY
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#047857' }}>
+                      <span>❄️ Snowflake</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, fontSize: 10.5, color: '#047857' }}>
+                      <span>👥 65 rows</span>
+                      <span>14 columns</span>
+                    </div>
+                  </div>
+
+                  {/* Columns List with Left Dots */}
+                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {filteredTargetCols.map((col, idx) => (
+                      <div
+                        key={col}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedColumnIndex(idx);
+                          setSelectedNode('target');
+                        }}
+                        style={{
+                          height: 24, fontSize: 11, display: 'flex', alignItems: 'center', gap: 8,
+                          color: selectedColumnIndex === idx ? '#047857' : '#1E293B',
+                          fontWeight: selectedColumnIndex === idx ? 700 : 500,
+                          background: selectedColumnIndex === idx ? '#ECFDF5' : 'transparent',
+                          padding: '0 6px', borderRadius: 4
+                        }}
+                      >
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: selectedColumnIndex === idx ? '#10B981' : '#94A3B8' }} />
+                        <span style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{col}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div style={{ width: 22, height: 42, background: '#DDD6FE', borderRadius: 3 }} />
-              <div style={{ width: 22, height: 42, background: '#A7F3D0', borderRadius: 3 }} />
+            )}
+
+            {/* ── VIEW 2: TABLE-LEVEL LINEAGE (MATCHING IMAGE 2) ──────────────── */}
+            {level === 'table' && (
               <div style={{
-                position: 'absolute', inset: 6, border: '1.5px dashed #6366F1',
-                borderRadius: 6, pointerEvents: 'none'
-              }} />
-            </div>
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 48, minHeight: 450, padding: '40px 0',
+                transform: `scale(${zoomLevel / 100})`, transformOrigin: 'center'
+              }}>
+                {/* 1. SOURCE TABLE */}
+                <div
+                  onClick={() => setSelectedNode('source')}
+                  style={{
+                    width: 220, padding: 16, background: '#FFFFFF', borderRadius: 10,
+                    border: `1.5px solid ${selectedNode === 'source' ? '#3B82F6' : '#E2E8F0'}`,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>RAW_INVENTORY</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#64748B' }}>
+                    <span>❄️ Snowflake</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>RAW_DATA</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#0F172A', marginTop: 2 }}>208 rows</div>
+                </div>
+
+                <div style={{ color: '#94A3B8' }}><ArrowRight size={24} /></div>
+
+                {/* 2. DBT MODEL */}
+                <div
+                  onClick={() => setSelectedNode('dbt')}
+                  style={{
+                    width: 200, padding: 16, background: '#FFFFFF', borderRadius: 10,
+                    border: `1.5px solid ${selectedNode === 'dbt' ? '#F97316' : '#E2E8F0'}`,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: '#0F172A' }}>
+                    <span>🟧</span>
+                    <span>dbt-inventory-job</span>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4 }}>
+                      20/20 Tests Passed
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ color: '#10B981' }}><ArrowRight size={24} /></div>
+
+                {/* 3. TARGET TABLE (HIGHLIGHTED GREEN) */}
+                <div
+                  onClick={() => setSelectedNode('target')}
+                  style={{
+                    width: 220, padding: 16, background: '#FFFFFF', borderRadius: 10,
+                    border: '2px solid #10B981',
+                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.2), 0 4px 12px rgba(16, 185, 129, 0.1)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>DIM_INVENTORY</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#047857' }}>
+                    <span>❄️ Snowflake</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>FINAL_DATA</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#0F172A', marginTop: 2 }}>65 rows</div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* ── RIGHT DRAWER: COLUMN LINEAGE DETAILS (MATCHING SCREENSHOT) ────── */}
+          {/* ── RIGHT IMPACT & NODE INSPECTOR DRAWER (MATCHING IMAGE 1 & 2) ───────── */}
           {drawerOpen && (
             <div style={{
               width: 320, background: '#FFFFFF', border: '1px solid #E2E8F0',
@@ -488,111 +499,112 @@ export default function Lineage() {
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: 10 }}>
                 <span style={{ fontWeight: 700, fontSize: 13.5, color: '#0F172A' }}>
-                  Column Lineage Details
+                  Impact & Node Inspector
                 </span>
                 <button className="icon-btn" onClick={() => setDrawerOpen(false)} style={{ width: 24, height: 24 }}>
                   <X size={14} />
                 </button>
               </div>
 
-              {/* Selected Column */}
+              {/* Selected Asset Header Pill (DIM_INVENTORY) */}
+              <div style={{
+                padding: '8px 12px', background: '#ECFDF5', borderRadius: 8,
+                border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', gap: 8
+              }}>
+                <Table size={15} color="#047857" />
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#047857' }}>
+                  DIM_INVENTORY
+                </span>
+              </div>
+
+              {/* Asset Overview */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5, color: '#475569' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>❄️</span>
+                  <strong>Snowflake Table</strong>
+                </div>
+                <div style={{ fontSize: 10.5, color: '#64748B', fontFamily: 'monospace' }}>
+                  INVENTORY_ANALYTICS.FINAL_DATA.DIM_INVENTORY
+                </div>
+                <div style={{ fontSize: 11, color: '#0F172A', fontWeight: 600 }}>
+                  🔢 14 Columns Monitored
+                </div>
+              </div>
+
+              {/* 4 Observability Health Cards (Image 2 Match) */}
               <div>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Selected Column</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 6, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}>
-                    <FileText size={16} />
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Observability Health</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 6 }}>
+                  {/* Freshness */}
+                  <div style={{ padding: 8, borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                    <div style={{ fontSize: 10, color: '#991B1B', fontWeight: 600 }}>Freshness</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#DC2626', marginTop: 2 }}>Delayed (37h)</div>
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>
-                      {selectedDetails.name}
-                    </div>
-                    <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748B' }}>
-                      {selectedDetails.type}
-                    </div>
+
+                  {/* Volume */}
+                  <div style={{ padding: 8, borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                    <div style={{ fontSize: 10, color: '#991B1B', fontWeight: 600 }}>Volume Trend</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#DC2626', marginTop: 2 }}>65 rows / -68%</div>
+                  </div>
+
+                  {/* Data Quality */}
+                  <div style={{ padding: 8, borderRadius: 6, background: '#ECFDF5', border: '1px solid #A7F3D0' }}>
+                    <div style={{ fontSize: 10, color: '#065F46', fontWeight: 600 }}>Data Quality</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#059669', marginTop: 2 }}>96% (24/25)</div>
+                  </div>
+
+                  {/* Schema */}
+                  <div style={{ padding: 8, borderRadius: 6, background: '#ECFDF5', border: '1px solid #A7F3D0' }}>
+                    <div style={{ fontSize: 10, color: '#065F46', fontWeight: 600 }}>Schema Health</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#059669', marginTop: 2 }}>100% Valid</div>
                   </div>
                 </div>
               </div>
 
-              {/* Lineage Path */}
-              <div>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Lineage Path</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6, paddingLeft: 8, borderLeft: '2px solid #E2E8F0' }}>
-                  <div style={{ fontSize: 11 }}>
-                    <div style={{ fontWeight: 700, color: '#2563EB' }}>RAW.CUSTOMERS</div>
-                    <div style={{ color: '#64748B', fontSize: 10.5 }}>{selectedDetails.name} &bull; Source Table</div>
+              {/* Data Quality & Schema Progress Bars */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span style={{ color: '#64748B' }}>Data Quality Score</span>
+                    <strong style={{ color: '#059669' }}>96%</strong>
                   </div>
-                  <div style={{ fontSize: 11 }}>
-                    <div style={{ fontWeight: 700, color: '#7C3AED' }}>STG_CUSTOMERS</div>
-                    <div style={{ color: '#64748B', fontSize: 10.5 }}>{selectedDetails.name} &bull; dbt Model</div>
+                  <div style={{ width: '100%', height: 6, background: '#E2E8F0', borderRadius: 99, marginTop: 4 }}>
+                    <div style={{ width: '96%', height: '100%', background: '#10B981', borderRadius: 99 }} />
                   </div>
-                  <div style={{ fontSize: 11 }}>
-                    <div style={{ fontWeight: 700, color: '#7C3AED' }}>DIM_CUSTOMERS</div>
-                    <div style={{ color: '#64748B', fontSize: 10.5 }}>{selectedDetails.name} &bull; dbt Model</div>
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span style={{ color: '#64748B' }}>Schema Stability</span>
+                    <strong style={{ color: '#059669' }}>100%</strong>
                   </div>
-                  <div style={{ fontSize: 11 }}>
-                    <div style={{ fontWeight: 700, color: '#059669' }}>MART.DIM_CUSTOMERS</div>
-                    <div style={{ color: '#64748B', fontSize: 10.5 }}>{selectedDetails.name} &bull; Snowflake Table</div>
+                  <div style={{ width: '100%', height: 6, background: '#E2E8F0', borderRadius: 99, marginTop: 4 }}>
+                    <div style={{ width: '100%', height: '100%', background: '#10B981', borderRadius: 99 }} />
                   </div>
                 </div>
               </div>
 
-              {/* Column Details */}
+              {/* Impact Analysis */}
               <div>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Column Details</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6, fontSize: 11.5 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Data Type:</span>
-                    <strong style={{ fontFamily: 'monospace' }}>{selectedDetails.type}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Description:</span>
-                    <span style={{ fontSize: 11, color: '#0F172A', textAlign: 'right', maxWidth: 170 }}>{selectedDetails.desc}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Last Updated:</span>
-                    <span>{selectedDetails.lastUpdated}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#64748B' }}>Data Quality:</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <strong style={{ color: '#10B981' }}>{selectedDetails.quality}%</strong>
-                      <div style={{ width: 50, height: 5, background: '#E2E8F0', borderRadius: 99 }}>
-                        <div style={{ width: `${selectedDetails.quality}%`, height: '100%', background: '#10B981', borderRadius: 99 }} />
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Nulls:</span>
-                    <strong style={{ color: '#10B981' }}>{selectedDetails.nulls}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Distinct Values:</span>
-                    <strong>{selectedDetails.distinct}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748B' }}>Status:</span>
-                    <span style={{ color: '#10B981', fontWeight: 600 }}>● {selectedDetails.status}</span>
-                  </div>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Downstream Impact</span>
+                <div style={{ padding: '8px 10px', background: '#F8FAFC', borderRadius: 6, border: '1px solid #E2E8F0', marginTop: 6, fontSize: 11 }}>
+                  <div style={{ fontWeight: 600, color: '#0F172A' }}>1 downstream dashboard</div>
+                  <div style={{ color: '#64748B', marginTop: 2 }}>Executive Inventory Report (Looker/PowerBI)</div>
+                  <div style={{ color: '#059669', fontWeight: 600, marginTop: 4 }}>● 14 columns affected</div>
                 </div>
               </div>
 
-              {/* Transformation Code Block */}
-              <div>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Transformation</span>
-                <div style={{
-                  marginTop: 6, padding: '8px 10px', background: '#F8FAFC',
-                  color: '#2563EB', borderRadius: 6, fontFamily: 'monospace',
-                  fontSize: 11, lineHeight: 1.4, border: '1px solid #E2E8F0'
-                }}>
-                  {selectedDetails.sql}
-                </div>
-                <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 4 }}>
-                  Transformation Type: <strong>{selectedDetails.transformationType}</strong>
-                </div>
-                <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>
-                  Computed By: <code>{selectedDetails.computedBy}</code>
-                </div>
-              </div>
+              {/* Inspect Button (Emerald Green) */}
+              <button
+                className="export-btn"
+                onClick={() => setLevel('column')}
+                style={{
+                  background: '#10B981', color: '#FFFFFF', border: 'none', fontWeight: 600,
+                  padding: '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'center', width: '100%'
+                }}
+              >
+                Inspect 14 Columns →
+              </button>
             </div>
           )}
         </div>
