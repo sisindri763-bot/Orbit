@@ -167,9 +167,6 @@ export default function Lineage() {
     return effectiveTargetCols.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
   }, [effectiveTargetCols, search]);
 
-  // Selected column info for inspector
-  const activeCol = effectiveTargetCols[selectedColumnIndex] || effectiveTargetCols[0];
-
   return (
     <div className="fade-in">
       <PageHeader
@@ -262,7 +259,7 @@ export default function Lineage() {
             </div>
           </div>
 
-          {/* Right Zoom Controls */}
+          {/* Right Zoom Controls & Inspector Toggle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               className="export-btn"
@@ -293,7 +290,7 @@ export default function Lineage() {
 
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{zoomLevel}%</span>
 
-            {/* Inspector Reopen / Toggle Button in Toolbar */}
+            {/* Inspector Toggle Button */}
             <button
               onClick={() => setDrawerOpen(o => !o)}
               style={{
@@ -304,7 +301,6 @@ export default function Lineage() {
                 color: drawerOpen ? '#059669' : 'var(--text-secondary)',
                 border: `1px solid ${drawerOpen ? '#A7F3D0' : 'var(--border)'}`
               }}
-              title="Toggle Impact & Node Inspector"
             >
               <Table size={13} />
               <span>{drawerOpen ? 'Hide Inspector' : 'Show Inspector'}</span>
@@ -314,25 +310,6 @@ export default function Lineage() {
 
         {/* ── MAIN WORKSPACE: CANVAS + RIGHT IMPACT INSPECTOR DRAWER ──────────── */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', position: 'relative' }}>
-          {/* Floating Reopen Handle when drawer is closed */}
-          {!drawerOpen && (
-            <button
-              onClick={() => setDrawerOpen(true)}
-              style={{
-                position: 'absolute', top: 20, right: 10, zIndex: 10,
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '8px 14px', borderRadius: 8,
-                background: '#FFFFFF', border: '1.5px solid #10B981',
-                color: '#059669', fontWeight: 700, fontSize: 12,
-                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.2)',
-                cursor: 'pointer', transition: 'all 0.15s ease'
-              }}
-            >
-              <Table size={14} color="#10B981" />
-              <span>Open Node Inspector</span>
-              <ChevronRight size={14} />
-            </button>
-          )}
           {/* ── LINEAGE CANVAS ───────────────────────────────────────────────── */}
           <div style={{
             flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid var(--border)',
@@ -344,7 +321,7 @@ export default function Lineage() {
             {level === 'column' && (
               <div style={{
                 position: 'relative', display: 'flex', alignItems: 'flex-start',
-                justifyContent: 'space-between', gap: 32, minWidth: 900,
+                justifyContent: 'space-between', gap: 32, minWidth: 920,
                 transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left',
                 transition: 'transform 0.15s ease'
               }}>
@@ -398,19 +375,19 @@ export default function Lineage() {
                   })}
                 </svg>
 
-                {/* 1. SOURCE TABLE CARD */}
+                {/* 1. SOURCE TABLE CARD (RICH BLUE SHADING) */}
                 <div
                   onClick={() => { setSelectedNode('source'); setDrawerOpen(true); }}
                   style={{
                     width: 280, background: '#FFFFFF', borderRadius: 10,
-                    border: `1.5px solid ${selectedNode === 'source' ? '#3B82F6' : '#E2E8F0'}`,
-                    boxShadow: selectedNode === 'source' ? '0 0 0 3px rgba(59, 130, 246, 0.15)' : '0 2px 8px rgba(0,0,0,0.04)',
+                    border: '2px solid #3B82F6',
+                    boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.15), 0 4px 14px rgba(59, 130, 246, 0.08)',
                     overflow: 'hidden', zIndex: 2, cursor: 'pointer'
                   }}
                 >
-                  <div style={{ padding: '12px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                  <div style={{ padding: '12px 14px', background: '#EFF6FF', borderBottom: '1px solid #BFDBFE' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#3B82F6', background: '#EFF6FF', padding: '2px 8px', borderRadius: 4 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#1D4ED8', background: '#DBEAFE', padding: '2px 8px', borderRadius: 4, border: '1px solid #BFDBFE' }}>
                         Source table
                       </span>
                       <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>⋮</span>
@@ -420,11 +397,11 @@ export default function Lineage() {
                       {sourceTableName}
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#64748B' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#2563EB' }}>
                       <span>❄️ Snowflake</span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, fontSize: 10.5, color: '#64748B' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, fontSize: 10.5, color: '#2563EB' }}>
                       <span>👥 {sourceRowCount} rows</span>
                       <span>{effectiveSourceCols.length} columns</span>
                     </div>
@@ -443,9 +420,9 @@ export default function Lineage() {
                         }}
                         style={{
                           height: 24, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          color: selectedColumnIndex === idx ? '#047857' : '#1E293B',
+                          color: selectedColumnIndex === idx ? '#1D4ED8' : '#1E293B',
                           fontWeight: selectedColumnIndex === idx ? 700 : 500,
-                          background: selectedColumnIndex === idx ? '#ECFDF5' : 'transparent',
+                          background: selectedColumnIndex === idx ? '#EFF6FF' : 'transparent',
                           padding: '0 6px', borderRadius: 4
                         }}
                       >
@@ -453,25 +430,25 @@ export default function Lineage() {
                           <span style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{col.name}</span>
                           {col.pk && <span style={{ fontSize: 8.5, color: '#F59E0B', fontWeight: 700 }}>(PK)</span>}
                         </div>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: selectedColumnIndex === idx ? '#10B981' : '#94A3B8' }} />
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: selectedColumnIndex === idx ? '#3B82F6' : '#94A3B8' }} />
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* 2. TRANSFORMATION NODE (dbt-inventory-job) */}
+                {/* 2. TRANSFORMATION NODE (RICH ORANGE SHADING) */}
                 <div
                   onClick={() => { setSelectedNode('dbt'); setDrawerOpen(true); }}
                   style={{
                     width: 220, background: '#FFFFFF', borderRadius: 10,
-                    border: `1.5px solid ${selectedNode === 'dbt' ? '#F97316' : '#E2E8F0'}`,
-                    boxShadow: selectedNode === 'dbt' ? '0 0 0 3px rgba(249, 115, 22, 0.15)' : '0 2px 8px rgba(0,0,0,0.04)',
+                    border: '2px solid #F97316',
+                    boxShadow: '0 0 0 3px rgba(249, 115, 22, 0.15), 0 4px 14px rgba(249, 115, 22, 0.08)',
                     overflow: 'hidden', zIndex: 2, cursor: 'pointer'
                   }}
                 >
-                  <div style={{ padding: '12px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                  <div style={{ padding: '12px 14px', background: '#FFF7ED', borderBottom: '1px solid #FED7AA' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#C2410C', background: '#FFF7ED', padding: '2px 8px', borderRadius: 4 }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#C2410C', background: '#FFEDD5', padding: '2px 8px', borderRadius: 4, border: '1px solid #FED7AA' }}>
                         Transformation
                       </span>
                       <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>⋮</span>
@@ -522,19 +499,19 @@ export default function Lineage() {
                   </div>
                 </div>
 
-                {/* 3. TARGET TABLE CARD (HIGHLIGHTED GREEN BORDER) */}
+                {/* 3. TARGET TABLE CARD (RICH GREEN SHADING) */}
                 <div
                   onClick={() => { setSelectedNode('target'); setDrawerOpen(true); }}
                   style={{
                     width: 280, background: '#FFFFFF', borderRadius: 10,
                     border: '2px solid #10B981',
-                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.2), 0 4px 14px rgba(16, 185, 129, 0.1)',
+                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.15), 0 4px 14px rgba(16, 185, 129, 0.08)',
                     overflow: 'hidden', zIndex: 2, cursor: 'pointer'
                   }}
                 >
                   <div style={{ padding: '12px 14px', background: '#ECFDF5', borderBottom: '1px solid #A7F3D0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#047857', background: '#FFFFFF', padding: '2px 8px', borderRadius: 4, border: '1px solid #A7F3D0' }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: '#047857', background: '#D1FAE5', padding: '2px 8px', borderRadius: 4, border: '1px solid #A7F3D0' }}>
                         Target table
                       </span>
                       <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>⋮</span>
@@ -592,15 +569,16 @@ export default function Lineage() {
                 transform: `scale(${zoomLevel / 100})`, transformOrigin: 'center'
               }}>
                 <div
-                  onClick={() => setSelectedNode('source')}
+                  onClick={() => { setSelectedNode('source'); setDrawerOpen(true); }}
                   style={{
                     width: 230, padding: 16, background: '#FFFFFF', borderRadius: 10,
-                    border: `1.5px solid ${selectedNode === 'source' ? '#3B82F6' : '#E2E8F0'}`,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer'
+                    border: '2px solid #3B82F6',
+                    boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.15), 0 4px 14px rgba(59, 130, 246, 0.08)',
+                    cursor: 'pointer'
                   }}
                 >
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>RAW_INVENTORY</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#64748B' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#2563EB' }}>
                     <span>❄️ Snowflake</span>
                   </div>
                   <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>RAW_DATA</div>
@@ -610,11 +588,12 @@ export default function Lineage() {
                 <div style={{ color: '#94A3B8' }}><ArrowRight size={24} /></div>
 
                 <div
-                  onClick={() => setSelectedNode('dbt')}
+                  onClick={() => { setSelectedNode('dbt'); setDrawerOpen(true); }}
                   style={{
                     width: 210, padding: 16, background: '#FFFFFF', borderRadius: 10,
-                    border: `1.5px solid ${selectedNode === 'dbt' ? '#F97316' : '#E2E8F0'}`,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)', cursor: 'pointer'
+                    border: '2px solid #F97316',
+                    boxShadow: '0 0 0 3px rgba(249, 115, 22, 0.15), 0 4px 14px rgba(249, 115, 22, 0.08)',
+                    cursor: 'pointer'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: '#0F172A' }}>
@@ -631,11 +610,11 @@ export default function Lineage() {
                 <div style={{ color: '#10B981' }}><ArrowRight size={24} /></div>
 
                 <div
-                  onClick={() => setSelectedNode('target')}
+                  onClick={() => { setSelectedNode('target'); setDrawerOpen(true); }}
                   style={{
                     width: 230, padding: 16, background: '#FFFFFF', borderRadius: 10,
                     border: '2px solid #10B981',
-                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.2), 0 4px 12px rgba(16, 185, 129, 0.1)',
+                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.15), 0 4px 14px rgba(16, 185, 129, 0.08)',
                     cursor: 'pointer'
                   }}
                 >
