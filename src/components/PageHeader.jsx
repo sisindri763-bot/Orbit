@@ -34,8 +34,13 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    if (onRefresh) await onRefresh();
-    setTimeout(() => setRefreshing(false), 500);
+    try {
+      if (onRefresh) await onRefresh();
+    } catch (e) {
+      console.error('Refresh error:', e);
+    } finally {
+      setTimeout(() => setRefreshing(false), 700);
+    }
   };
 
   const handleExport = () => {
