@@ -166,6 +166,15 @@ export const fetchConnectorTypes = () =>
 export const testToolConnection = (toolId) =>
   api.post(`/v1/tools/${toolId}/test`).then(r => r.data);
 
+export const createTool = (payload) =>
+  api.post('/v1/tools', payload).then(r => r.data);
+
+export const createPipelineFromTools = (payload) =>
+  api.post('/v1/pipelines/from-tools', payload).then(r => r.data);
+
+export const fetchPipelineTemplates = () =>
+  safeGet('/v1/pipelines/templates', null);
+
 // ── Operations & Triggers ────────────────────────────────────────────────────
 export const triggerSync = (payload = {}) =>
   api.post('/v1/sync', payload).then(r => r.data);
