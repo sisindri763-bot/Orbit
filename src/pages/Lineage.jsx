@@ -289,23 +289,25 @@ export default function Lineage() {
             </button>
 
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{zoomLevel}%</span>
-
-            {/* Inspector Toggle Button */}
-            <button
-              onClick={() => setDrawerOpen(o => !o)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.15s',
-                background: drawerOpen ? '#ECFDF5' : 'var(--bg-card-subtle)',
-                color: drawerOpen ? '#059669' : 'var(--text-secondary)',
-                border: `1px solid ${drawerOpen ? '#A7F3D0' : 'var(--border)'}`
-              }}
-            >
-              <Table size={13} />
-              <span>{drawerOpen ? 'Hide Inspector' : 'Show Inspector'}</span>
-            </button>
           </div>
+
+          {/* Far Right Corner: Inspector Toggle Button */}
+          <button
+            onClick={() => setDrawerOpen(o => !o)}
+            style={{
+              marginLeft: 'auto',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s',
+              background: drawerOpen ? '#ECFDF5' : 'var(--bg-card-subtle)',
+              color: drawerOpen ? '#059669' : 'var(--text-secondary)',
+              border: `1.5px solid ${drawerOpen ? '#A7F3D0' : 'var(--border)'}`,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+            }}
+          >
+            <Table size={13} color="#059669" />
+            <span>{drawerOpen ? 'Hide Inspector' : 'Show Inspector'}</span>
+          </button>
         </div>
 
         {/* ── MAIN WORKSPACE: CANVAS + RIGHT IMPACT INSPECTOR DRAWER ──────────── */}
