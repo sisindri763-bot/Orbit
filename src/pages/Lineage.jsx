@@ -259,8 +259,8 @@ export default function Lineage() {
             </div>
           </div>
 
-          {/* Right Zoom Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Bottom Toolbar Row: Zoom Controls (Left) + Inspector Button (Far Right Corner) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', marginTop: 2 }}>
             <button
               className="export-btn"
               onClick={() => setZoomLevel(z => Math.min(130, z + 10))}
@@ -290,11 +290,11 @@ export default function Lineage() {
 
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{zoomLevel}%</span>
 
-            {/* Inspector Toggle Button */}
+            {/* Inspector Toggle Button - Pushed to Far Right Corner */}
             <button
               onClick={() => setDrawerOpen(o => !o)}
               style={{
-                marginLeft: 8,
+                marginLeft: 'auto',
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
                 cursor: 'pointer', transition: 'all 0.15s',
