@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 
 import Overview from './pages/Overview';
 import Pipelines from './pages/Pipelines';
+import Integrations from './pages/Integrations';
 import ObsOverview from './pages/DataObservability/ObsOverview';
 import Freshness from './pages/DataObservability/Freshness';
 import Volume from './pages/DataObservability/Volume';
@@ -27,6 +28,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Overview />} />
               <Route path="/pipelines" element={<Pipelines />} />
+              <Route path="/integrations" element={<Integrations />} />
               <Route path="/observability" element={<ObsOverview />} />
               <Route path="/observability/freshness" element={<Freshness />} />
               <Route path="/observability/volume" element={<Volume />} />

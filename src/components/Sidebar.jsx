@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, GitBranch, Database, Network,
   AlertTriangle, Shield, BarChart2, Bell, FileText, Settings,
-  ChevronDown, ChevronRight, Moon
+  ChevronDown, ChevronRight, Moon, Sliders, Layers
 } from 'lucide-react';
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
@@ -10,6 +10,7 @@ import { useTheme } from '../context/ThemeContext';
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Overview', to: '/' },
   { icon: GitBranch, label: 'Pipelines', to: '/pipelines' },
+  { icon: Layers, label: 'Integrations', to: '/integrations' },
   {
     icon: Database, label: 'Data Observability', to: '/observability',
     children: [
@@ -35,7 +36,7 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      {/* Brand Logo (Green polygon as in screenshots) */}
+      {/* Brand Logo */}
       <div className="sidebar-logo">
         <div className="sidebar-logo-icon">
           <Database size={16} color="#FFFFFF" />
