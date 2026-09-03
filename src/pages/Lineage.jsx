@@ -292,11 +292,47 @@ export default function Lineage() {
             </button>
 
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{zoomLevel}%</span>
+
+            {/* Inspector Reopen / Toggle Button in Toolbar */}
+            <button
+              onClick={() => setDrawerOpen(o => !o)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', transition: 'all 0.15s',
+                background: drawerOpen ? '#ECFDF5' : 'var(--bg-card-subtle)',
+                color: drawerOpen ? '#059669' : 'var(--text-secondary)',
+                border: `1px solid ${drawerOpen ? '#A7F3D0' : 'var(--border)'}`
+              }}
+              title="Toggle Impact & Node Inspector"
+            >
+              <Table size={13} />
+              <span>{drawerOpen ? 'Hide Inspector' : 'Show Inspector'}</span>
+            </button>
           </div>
         </div>
 
         {/* ── MAIN WORKSPACE: CANVAS + RIGHT IMPACT INSPECTOR DRAWER ──────────── */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', position: 'relative' }}>
+          {/* Floating Reopen Handle when drawer is closed */}
+          {!drawerOpen && (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              style={{
+                position: 'absolute', top: 20, right: 10, zIndex: 10,
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 8,
+                background: '#FFFFFF', border: '1.5px solid #10B981',
+                color: '#059669', fontWeight: 700, fontSize: 12,
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.2)',
+                cursor: 'pointer', transition: 'all 0.15s ease'
+              }}
+            >
+              <Table size={14} color="#10B981" />
+              <span>Open Node Inspector</span>
+              <ChevronRight size={14} />
+            </button>
+          )}
           {/* ── LINEAGE CANVAS ───────────────────────────────────────────────── */}
           <div style={{
             flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid var(--border)',
@@ -364,7 +400,7 @@ export default function Lineage() {
 
                 {/* 1. SOURCE TABLE CARD */}
                 <div
-                  onClick={() => setSelectedNode('source')}
+                  onClick={() => { setSelectedNode('source'); setDrawerOpen(true); }}
                   style={{
                     width: 280, background: '#FFFFFF', borderRadius: 10,
                     border: `1.5px solid ${selectedNode === 'source' ? '#3B82F6' : '#E2E8F0'}`,
@@ -403,6 +439,7 @@ export default function Lineage() {
                           e.stopPropagation();
                           setSelectedColumnIndex(idx);
                           setSelectedNode('source');
+                          setDrawerOpen(true);
                         }}
                         style={{
                           height: 24, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -424,7 +461,7 @@ export default function Lineage() {
 
                 {/* 2. TRANSFORMATION NODE (dbt-inventory-job) */}
                 <div
-                  onClick={() => setSelectedNode('dbt')}
+                  onClick={() => { setSelectedNode('dbt'); setDrawerOpen(true); }}
                   style={{
                     width: 220, background: '#FFFFFF', borderRadius: 10,
                     border: `1.5px solid ${selectedNode === 'dbt' ? '#F97316' : '#E2E8F0'}`,
@@ -487,7 +524,7 @@ export default function Lineage() {
 
                 {/* 3. TARGET TABLE CARD (HIGHLIGHTED GREEN BORDER) */}
                 <div
-                  onClick={() => setSelectedNode('target')}
+                  onClick={() => { setSelectedNode('target'); setDrawerOpen(true); }}
                   style={{
                     width: 280, background: '#FFFFFF', borderRadius: 10,
                     border: '2px solid #10B981',
@@ -526,6 +563,7 @@ export default function Lineage() {
                           e.stopPropagation();
                           setSelectedColumnIndex(idx);
                           setSelectedNode('target');
+                          setDrawerOpen(true);
                         }}
                         style={{
                           height: 24, fontSize: 11, display: 'flex', alignItems: 'center', gap: 8,
