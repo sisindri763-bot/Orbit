@@ -561,252 +561,69 @@ export default function Lineage() {
               </div>
             )}
 
-            {/* ── VIEW 2: RICH ENTERPRISE TABLE-LEVEL LINEAGE DAG ────────────── */}
+            {/* ── VIEW 2: TABLE-LEVEL LINEAGE (CLEAN 3-CARD LAYOUT) ──────────── */}
             {level === 'table' && (
               <div style={{
-                display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-                gap: 24, minHeight: 520, padding: '24px 10px', overflowX: 'auto',
-                transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center',
-                transition: 'transform 0.15s ease'
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 48, minHeight: 450, padding: '40px 0',
+                transform: `scale(${zoomLevel / 100})`, transformOrigin: 'center'
               }}>
-                {/* 1. SOURCE TABLE */}
                 <div
                   onClick={() => { setSelectedNode('source'); setDrawerOpen(true); }}
                   style={{
-                    width: 240, background: '#FFFFFF', borderRadius: 10,
+                    width: 230, padding: 16, background: '#FFFFFF', borderRadius: 10,
                     border: '2px solid #3B82F6',
-                    boxShadow: selectedNode === 'source' ? '0 0 0 3px rgba(59, 130, 246, 0.25), 0 4px 14px rgba(59, 130, 246, 0.1)' : '0 2px 8px rgba(0,0,0,0.04)',
-                    overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s ease'
+                    boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.15), 0 4px 14px rgba(59, 130, 246, 0.08)',
+                    cursor: 'pointer'
                   }}
                 >
-                  <div style={{ padding: '10px 12px', background: '#EFF6FF', borderBottom: '1px solid #BFDBFE' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#1D4ED8', background: '#DBEAFE', padding: '2px 6px', borderRadius: 4 }}>
-                        Source Table
-                      </span>
-                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#047857' }}>● Healthy</span>
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 12.5, color: '#0F172A' }}>RAW_INVENTORY</div>
-                    <div style={{ fontSize: 11, color: '#2563EB', marginTop: 2 }}>❄️ Snowflake &bull; RAW_DATA</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>RAW_INVENTORY</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#2563EB' }}>
+                    <span>❄️ Snowflake</span>
                   </div>
-
-                  <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Row Count:</span>
-                      <strong style={{ color: '#0F172A' }}>{sourceRowCount} rows</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Schema:</span>
-                      <strong style={{ color: '#0F172A' }}>14 columns</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Freshness Lag:</span>
-                      <span style={{ color: '#D97706', fontWeight: 600 }}>42.5h (Notice)</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Storage Size:</span>
-                      <strong style={{ color: '#0F172A' }}>18.5 KB</strong>
-                    </div>
-                  </div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>RAW_DATA</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#0F172A', marginTop: 2 }}>{sourceRowCount} rows</div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 60, color: '#3B82F6' }}>
-                  <ArrowRight size={20} />
-                  <span style={{ fontSize: 9.5, fontWeight: 600, color: '#64748B', marginTop: 4 }}>208 rows</span>
-                </div>
+                <div style={{ color: '#94A3B8' }}><ArrowRight size={24} /></div>
 
-                {/* 2. STAGING & INTERMEDIATE STACK */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {/* stg_inventory */}
-                  <div
-                    onClick={() => { setSelectedNode('dbt'); setDrawerOpen(true); }}
-                    style={{
-                      width: 220, background: '#FFFFFF', borderRadius: 10,
-                      border: '2px solid #8B5CF6',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                      overflow: 'hidden', cursor: 'pointer'
-                    }}
-                  >
-                    <div style={{ padding: '8px 12px', background: '#F5F3FF', borderBottom: '1px solid #DDD6FE' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                        <span style={{ fontSize: 9.5, fontWeight: 700, color: '#6D28D9', background: '#EDE9FE', padding: '1px 5px', borderRadius: 4 }}>
-                          dbt View
-                        </span>
-                        <span style={{ fontSize: 9.5, fontWeight: 700, color: '#047857' }}>● Pass</span>
-                      </div>
-                      <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A' }}>stg_inventory</div>
-                    </div>
-                    <div style={{ padding: '8px 12px', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4, color: '#64748B' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Runtime:</span>
-                        <strong style={{ color: '#0F172A' }}>1.2s</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Output:</span>
-                        <strong style={{ color: '#0F172A' }}>208 rows</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* int_inventory_metrics */}
-                  <div
-                    onClick={() => { setSelectedNode('dbt'); setDrawerOpen(true); }}
-                    style={{
-                      width: 220, background: '#FFFFFF', borderRadius: 10,
-                      border: '2px solid #8B5CF6',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                      overflow: 'hidden', cursor: 'pointer'
-                    }}
-                  >
-                    <div style={{ padding: '8px 12px', background: '#F5F3FF', borderBottom: '1px solid #DDD6FE' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                        <span style={{ fontSize: 9.5, fontWeight: 700, color: '#6D28D9', background: '#EDE9FE', padding: '1px 5px', borderRadius: 4 }}>
-                          dbt Metrics
-                        </span>
-                        <span style={{ fontSize: 9.5, fontWeight: 700, color: '#047857' }}>● Pass</span>
-                      </div>
-                      <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A' }}>int_inventory_metrics</div>
-                    </div>
-                    <div style={{ padding: '8px 12px', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4, color: '#64748B' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Runtime:</span>
-                        <strong style={{ color: '#0F172A' }}>2.8s</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Features:</span>
-                        <strong style={{ color: '#0F172A' }}>Turnover & Stock</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 60, color: '#8B5CF6' }}>
-                  <ArrowRight size={20} />
-                  <span style={{ fontSize: 9.5, fontWeight: 600, color: '#64748B', marginTop: 4 }}>Transforms</span>
-                </div>
-
-                {/* 3. DIMENSION MART MODEL */}
                 <div
                   onClick={() => { setSelectedNode('dbt'); setDrawerOpen(true); }}
                   style={{
-                    width: 230, background: '#FFFFFF', borderRadius: 10,
+                    width: 210, padding: 16, background: '#FFFFFF', borderRadius: 10,
                     border: '2px solid #F97316',
-                    boxShadow: selectedNode === 'dbt' ? '0 0 0 3px rgba(249, 115, 22, 0.25), 0 4px 14px rgba(249, 115, 22, 0.1)' : '0 2px 8px rgba(0,0,0,0.04)',
-                    overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s ease'
+                    boxShadow: '0 0 0 3px rgba(249, 115, 22, 0.15), 0 4px 14px rgba(249, 115, 22, 0.08)',
+                    cursor: 'pointer'
                   }}
                 >
-                  <div style={{ padding: '10px 12px', background: '#FFF7ED', borderBottom: '1px solid #FED7AA' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#C2410C', background: '#FFEDD5', padding: '2px 6px', borderRadius: 4 }}>
-                        dbt Mart Model
-                      </span>
-                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#047857' }}>● 20/20 Pass</span>
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 12.5, color: '#0F172A' }}>dim_inventory</div>
-                    <div style={{ fontSize: 11, color: '#C2410C', marginTop: 2 }}>🟧 dbt-inventory-job</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: '#0F172A' }}>
+                    <span>🟧</span>
+                    <span>dbt-inventory-job</span>
                   </div>
-
-                  <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Model Execution:</span>
-                      <strong style={{ color: '#059669' }}>4.1s (15s total)</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Deduplication:</span>
-                      <strong style={{ color: '#0F172A' }}>208 &rarr; 65 rows</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>dbt Test Suite:</span>
-                      <strong style={{ color: '#059669' }}>20 Passed</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Modeling:</span>
-                      <strong style={{ color: '#0F172A' }}>SCD Type-1 Mart</strong>
-                    </div>
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4 }}>
+                      20/20 Tests Passed
+                    </span>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 60, color: '#10B981' }}>
-                  <ArrowRight size={20} />
-                  <span style={{ fontSize: 9.5, fontWeight: 600, color: '#64748B', marginTop: 4 }}>65 rows</span>
-                </div>
+                <div style={{ color: '#10B981' }}><ArrowRight size={24} /></div>
 
-                {/* 4. TARGET MART TABLE */}
                 <div
                   onClick={() => { setSelectedNode('target'); setDrawerOpen(true); }}
                   style={{
-                    width: 240, background: '#FFFFFF', borderRadius: 10,
+                    width: 230, padding: 16, background: '#FFFFFF', borderRadius: 10,
                     border: '2px solid #10B981',
-                    boxShadow: selectedNode === 'target' ? '0 0 0 3px rgba(16, 185, 129, 0.25), 0 4px 14px rgba(16, 185, 129, 0.1)' : '0 2px 8px rgba(0,0,0,0.04)',
-                    overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s ease'
+                    boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.15), 0 4px 14px rgba(16, 185, 129, 0.08)',
+                    cursor: 'pointer'
                   }}
                 >
-                  <div style={{ padding: '10px 12px', background: '#ECFDF5', borderBottom: '1px solid #A7F3D0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', background: '#D1FAE5', padding: '2px 6px', borderRadius: 4 }}>
-                        Published Mart
-                      </span>
-                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#047857' }}>● Verified</span>
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 12.5, color: '#0F172A' }}>DIM_INVENTORY</div>
-                    <div style={{ fontSize: 11, color: '#047857', marginTop: 2 }}>❄️ Snowflake &bull; FINAL_DATA</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>DIM_INVENTORY</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#047857' }}>
+                    <span>❄️ Snowflake</span>
                   </div>
-
-                  <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Published Rows:</span>
-                      <strong style={{ color: '#059669' }}>{targetRowCount} rows</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Schema Health:</span>
-                      <strong style={{ color: '#059669' }}>100% (14 cols)</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Data Quality:</span>
-                      <strong style={{ color: '#059669' }}>96% (24/25 checks)</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                      <span>Downstream:</span>
-                      <strong style={{ color: '#0F172A' }}>1 BI Dashboard</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 60, color: '#059669' }}>
-                  <ArrowRight size={20} />
-                  <span style={{ fontSize: 9.5, fontWeight: 600, color: '#64748B', marginTop: 4 }}>BI Feed</span>
-                </div>
-
-                {/* 5. DOWNSTREAM BI DASHBOARD CONSUMER */}
-                <div
-                  style={{
-                    width: 220, background: '#FFFFFF', borderRadius: 10,
-                    border: '1.5px dashed #10B981',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                    overflow: 'hidden'
-                  }}
-                >
-                  <div style={{ padding: '10px 12px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: '#475569', background: '#F1F5F9', padding: '2px 6px', borderRadius: 4 }}>
-                        BI Consumer
-                      </span>
-                      <span style={{ fontSize: 9.5, fontWeight: 700, color: '#047857' }}>● Active</span>
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 12, color: '#0F172A' }}>Executive Inventory Report</div>
-                    <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>📊 Looker / PowerBI</div>
-                  </div>
-
-                  <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#64748B' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Reports:</span>
-                      <strong style={{ color: '#0F172A' }}>4 Key Views</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Consumption:</span>
-                      <strong style={{ color: '#059669' }}>14 Columns Used</strong>
-                    </div>
-                  </div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>FINAL_DATA</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#0F172A', marginTop: 2 }}>{targetRowCount} rows</div>
                 </div>
               </div>
             )}
