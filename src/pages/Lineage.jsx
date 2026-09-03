@@ -176,7 +176,7 @@ export default function Lineage() {
       />
 
       <div className="page-body">
-        {/* ── TOP CONTROL BAR (PIXEL-PERFECT ENTERPRISE BAR) ─────────────────── */}
+        {/* ── TOP CONTROL BAR ─────────────────────────────────────────────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: 12, flexWrap: 'wrap', padding: '10px 16px', background: 'var(--bg-card)',
@@ -259,7 +259,7 @@ export default function Lineage() {
             </div>
           </div>
 
-          {/* Right Zoom Controls & Inspector Toggle */}
+          {/* Right Zoom Controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               className="export-btn"
@@ -289,25 +289,25 @@ export default function Lineage() {
             </button>
 
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{zoomLevel}%</span>
-          </div>
 
-          {/* Far Right Corner: Inspector Toggle Button */}
-          <button
-            onClick={() => setDrawerOpen(o => !o)}
-            style={{
-              marginLeft: 'auto',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-              cursor: 'pointer', transition: 'all 0.15s',
-              background: drawerOpen ? '#ECFDF5' : 'var(--bg-card-subtle)',
-              color: drawerOpen ? '#059669' : 'var(--text-secondary)',
-              border: `1.5px solid ${drawerOpen ? '#A7F3D0' : 'var(--border)'}`,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-            }}
-          >
-            <Table size={13} color="#059669" />
-            <span>{drawerOpen ? 'Hide Inspector' : 'Show Inspector'}</span>
-          </button>
+            {/* Inspector Toggle Button */}
+            <button
+              onClick={() => setDrawerOpen(o => !o)}
+              style={{
+                marginLeft: 8,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', transition: 'all 0.15s',
+                background: drawerOpen ? '#ECFDF5' : 'var(--bg-card-subtle)',
+                color: drawerOpen ? '#059669' : 'var(--text-secondary)',
+                border: `1.5px solid ${drawerOpen ? '#A7F3D0' : 'var(--border)'}`,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+              }}
+            >
+              <Table size={13} color="#059669" />
+              <span>{drawerOpen ? 'Hide Inspector' : 'Show Inspector'}</span>
+            </button>
+          </div>
         </div>
 
         {/* ── MAIN WORKSPACE: CANVAS + RIGHT IMPACT INSPECTOR DRAWER ──────────── */}
@@ -319,59 +319,61 @@ export default function Lineage() {
             backgroundImage: 'radial-gradient(#E2E8F0 1.2px, transparent 1.2px)',
             backgroundSize: '22px 22px'
           }}>
-            {/* ── VIEW 1: COLUMN-LEVEL LINEAGE ─────────────────────────────────── */}
+            {/* ── VIEW 1: COLUMN-LEVEL LINEAGE (PERFECT TOUCHING SPLINES) ──────── */}
             {level === 'column' && (
               <div style={{
                 position: 'relative', display: 'flex', alignItems: 'flex-start',
-                justifyContent: 'space-between', gap: 32, minWidth: 920,
+                gap: 80, width: 960,
                 transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top left',
                 transition: 'transform 0.15s ease'
               }}>
-                {/* SVG Connecting Bezier Splines */}
+                {/* SVG Connecting Bezier Splines - Exact Bounding Coordinates */}
                 <svg
                   style={{
-                    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                    position: 'absolute', top: 0, left: 0, width: 960, height: 600,
                     pointerEvents: 'none', zIndex: 1
                   }}
                 >
-                  {/* Connectors from Source to Transformation */}
+                  {/* Left-to-Center Connectors: from x=280 to x=360 */}
                   {filteredSourceCols.map((_, i) => {
-                    const y1 = 178 + i * 27;
-                    const y2 = 178 + Math.min(i, 4) * 32;
+                    const ySrc = 150 + i * 27;
+                    const total = Math.max(filteredSourceCols.length, 1);
+                    const yTrans = 150 + i * (220 / Math.max(total - 1, 1));
                     const isSelected = selectedColumnIndex === i;
 
                     return (
                       <g key={`l-${i}`}>
                         <path
-                          d={`M 280 ${y1} C 330 ${y1}, 340 ${y2}, 390 ${y2}`}
+                          d={`M 280 ${ySrc} C 320 ${ySrc}, 320 ${yTrans}, 360 ${yTrans}`}
                           fill="none"
                           stroke="#10B981"
                           strokeWidth={isSelected ? 2.5 : 1.5}
                           opacity={isSelected ? 1 : 0.4}
                         />
-                        <circle cx={280} cy={y1} r={isSelected ? 4 : 3} fill="#10B981" />
-                        <circle cx={390} cy={y2} r={3} fill="#10B981" />
+                        <circle cx={280} cy={ySrc} r={isSelected ? 4 : 3} fill="#10B981" />
+                        <circle cx={360} cy={yTrans} r={3} fill="#10B981" />
                       </g>
                     );
                   })}
 
-                  {/* Connectors from Transformation to Target */}
+                  {/* Center-to-Right Connectors: from x=600 to x=680 */}
                   {filteredTargetCols.map((_, i) => {
-                    const y1 = 178 + Math.min(i, 4) * 32;
-                    const y2 = 178 + i * 27;
+                    const total = Math.max(filteredTargetCols.length, 1);
+                    const yTrans = 150 + i * (220 / Math.max(total - 1, 1));
+                    const yTgt = 150 + i * 27;
                     const isSelected = selectedColumnIndex === i;
 
                     return (
                       <g key={`r-${i}`}>
                         <path
-                          d={`M 530 ${y1} C 580 ${y1}, 590 ${y2}, 640 ${y2}`}
+                          d={`M 600 ${yTrans} C 640 ${yTrans}, 640 ${yTgt}, 680 ${yTgt}`}
                           fill="none"
                           stroke="#10B981"
                           strokeWidth={isSelected ? 2.5 : 1.5}
                           opacity={isSelected ? 1 : 0.4}
                         />
-                        <circle cx={530} cy={y1} r={3} fill="#10B981" />
-                        <circle cx={640} cy={y2} r={isSelected ? 4 : 3} fill="#10B981" />
+                        <circle cx={600} cy={yTrans} r={3} fill="#10B981" />
+                        <circle cx={680} cy={yTgt} r={isSelected ? 4 : 3} fill="#10B981" />
                       </g>
                     );
                   })}
@@ -438,12 +440,12 @@ export default function Lineage() {
                   </div>
                 </div>
 
-                {/* 2. TRANSFORMATION NODE (RICH ORANGE SHADING) */}
+                {/* 2. TRANSFORMATION NODE (RICH ORANGE SHADING - EXPANDED HEIGHT) */}
                 <div
                   onClick={() => { setSelectedNode('dbt'); setDrawerOpen(true); }}
                   style={{
-                    width: 220, background: '#FFFFFF', borderRadius: 10,
-                    border: '2px solid #F97316',
+                    width: 240, background: '#FFFFFF', borderRadius: 10,
+                    border: '2px solid #F97316', minHeight: 390,
                     boxShadow: '0 0 0 3px rgba(249, 115, 22, 0.15), 0 4px 14px rgba(249, 115, 22, 0.08)',
                     overflow: 'hidden', zIndex: 2, cursor: 'pointer'
                   }}
@@ -476,18 +478,19 @@ export default function Lineage() {
                   </div>
 
                   {/* Transformation Stages */}
-                  <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {[
                       { name: 'stg_inventory.sql', dur: '1.2s' },
                       { name: 'int_inventory_metrics.sql', dur: '2.8s' },
                       { name: 'dim_inventory.sql', dur: '4.1s' },
                       { name: '20 dbt Data Tests', dur: '4.6s' },
                       { name: 'Snowflake Mart Load', dur: '1.0s' },
+                      { name: 'Catalog Schema Sync', dur: '0.8s' },
                     ].map((stg) => (
                       <div
                         key={stg.name}
                         style={{
-                          height: 28, fontSize: 10.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          height: 26, fontSize: 10.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           color: '#334155', fontWeight: 500
                         }}
                       >
