@@ -249,29 +249,14 @@ const CONNECTOR_SCHEMAS = {
       { key: 'user_id', label: 'Username', placeholder: 'mongo_admin', required: false },
       { key: 'secret', label: 'Password / Auth Token', type: 'password', placeholder: '••••••••', required: true },
     ]
-  },
-  vithi_agent: {
-    name: 'VITHI Agent',
-    icon: '🛡️',
-    color: '#10B981',
-    kind: 'orchestrator',
-    category: 'observability',
-    desc: 'Native push telemetry & metadata telemetry collector.',
-    fields: [
-      { key: 'collector_endpoint', label: 'Collector Ingestion Endpoint', placeholder: 'http://40.192.71.150:8002/webhooks/openlineage', required: true },
-      { key: 'cluster_name', label: 'Data Cluster Identifier', placeholder: 'e.g. production-ap-southeast-7', required: true },
-      { key: 'secret', label: 'Ingestion Master Secret', type: 'password', placeholder: 'sec_xxxx', required: false },
-    ]
   }
 };
 
 const CATEGORIES = [
-  { id: 'all', label: 'All', count: 23 },
+  { id: 'all', label: 'All', count: 15 },
   { id: 'warehouses', label: 'Data Warehouses & Lakes', count: 8 },
-  { id: 'databases', label: 'Databases', count: 6 },
-  { id: 'transformations', label: 'Transformations & ETL', count: 5 },
-  { id: 'orchestration', label: 'Orchestration', count: 3 },
-  { id: 'observability', label: 'Observability', count: 1 },
+  { id: 'databases', label: 'Databases', count: 3 },
+  { id: 'transformations', label: 'Transformations & ETL', count: 4 },
 ];
 
 export default function Integrations() {
@@ -483,10 +468,8 @@ export default function Integrations() {
   const groupedDirectory = useMemo(() => {
     const groups = {
       warehouses: { title: 'Data Warehouses & Lakes', desc: 'Connect your data warehouses, lakehouses and cloud storage.', items: [] },
-      transformations: { title: 'Transformations & ETL', desc: 'Orchestrate, transform and move your data across systems.', items: [] },
       databases: { title: 'Databases', desc: 'Connect to your operational and analytical databases.', items: [] },
-      orchestration: { title: 'Orchestration', desc: 'Schedule, manage and monitor your data pipelines and workflows.', items: [] },
-      observability: { title: 'Observability', desc: 'Telemetry, agent metadata collectors, and log shippers.', items: [] },
+      transformations: { title: 'Transformations & ETL', desc: 'Orchestrate, transform and move your data across systems.', items: [] },
     };
 
     filteredCatalog.forEach(c => {
@@ -536,7 +519,7 @@ export default function Integrations() {
               color: activeTab === 'directory' ? 'var(--brand-dark)' : 'var(--text-secondary)'
             }}
           >
-            Connector Directory (23)
+            Connector Directory (15)
           </button>
         </div>
 
