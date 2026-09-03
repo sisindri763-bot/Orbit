@@ -4,7 +4,8 @@ import {
   AlertTriangle, Shield, Search, ArrowRight, Zap, ExternalLink,
   Edit2, Trash2, Check, X, ChevronRight, Activity, Clock, Cpu, Network,
   Table, Key, Hash, Code, Sparkles, Eye, FileSpreadsheet, ArrowLeftRight,
-  HelpCircle, Lock, Globe, Terminal, Play, CheckCircle2, CircleDot
+  HelpCircle, Lock, Globe, Terminal, Play, CheckCircle2, CircleDot, MoreVertical,
+  ChevronDown
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -260,7 +261,7 @@ const CATEGORIES = [
 ];
 
 export default function Integrations() {
-  const [activeTab, setActiveTab] = useState('directory'); // 'directory' (Tab 1) | 'connected' (Tab 2)
+  const [activeTab, setActiveTab] = useState('connected'); // 'connected' (Tab 1 by default matching Screenshot 2) | 'directory' (Tab 2)
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -360,7 +361,7 @@ export default function Integrations() {
     }
   };
 
-  // Enterprise Real-Time Sync Console Action
+  // Enterprise Real-Time Sync Console Action (Instant Pop-up Modal)
   const handleStartLiveSync = async () => {
     setSyncModalOpen(true);
     setSyncing(true);
@@ -519,30 +520,16 @@ export default function Integrations() {
     <div className="fade-in">
       <PageHeader
         title="Integrations"
-        subtitle={activeTab === 'directory'
-          ? "Explore and connect your data sources, transformation engines, and destination data marts."
-          : "Manage your live data connections, inspect schema structures, test credentials, and compose data pipelines."
+        subtitle={activeTab === 'connected'
+          ? "Manage your data connections, test credentials, and keep your ecosystem healthy."
+          : "Explore and connect your data sources, transformation tools, and destinations."
         }
         onRefresh={loadData}
       />
 
       <div className="page-body">
-        {/* Navigation Tabs (Tab 1: Connector Directory | Tab 2: Connected Systems & Pipeline Topology) */}
+        {/* Navigation Tabs (Tab 1: Connected Systems | Tab 2: Connector Directory) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 16 }}>
-          <button
-            className={`tab-pill-btn ${activeTab === 'directory' ? 'active' : ''}`}
-            onClick={() => setActiveTab('directory')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 8,
-              fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer',
-              background: activeTab === 'directory' ? 'var(--sidebar-bg-active)' : 'transparent',
-              color: activeTab === 'directory' ? 'var(--brand-dark)' : 'var(--text-secondary)'
-            }}
-          >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeTab === 'directory' ? '#10B981' : '#94A3B8', display: 'inline-block' }} />
-            Connector Directory ({Object.keys(CONNECTOR_SCHEMAS).length})
-          </button>
-
           <button
             className={`tab-pill-btn ${activeTab === 'connected' ? 'active' : ''}`}
             onClick={() => setActiveTab('connected')}
@@ -554,11 +541,324 @@ export default function Integrations() {
             }}
           >
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeTab === 'connected' ? '#10B981' : '#94A3B8', display: 'inline-block' }} />
-            Connected Systems & Compose ({tools.length})
+            Connected Systems {tools.length > 0 && <span style={{ background: activeTab === 'connected' ? '#10B981' : 'var(--border)', color: activeTab === 'connected' ? '#FFFFFF' : 'var(--text-secondary)', padding: '1px 7px', borderRadius: 99, fontSize: 11 }}>{tools.length}</span>}
+          </button>
+
+          <button
+            className={`tab-pill-btn ${activeTab === 'directory' ? 'active' : ''}`}
+            onClick={() => setActiveTab('directory')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 8,
+              fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer',
+              background: activeTab === 'directory' ? 'var(--sidebar-bg-active)' : 'transparent',
+              color: activeTab === 'directory' ? 'var(--brand-dark)' : 'var(--text-secondary)'
+            }}
+          >
+            Connector Directory <span style={{ background: activeTab === 'directory' ? '#10B981' : 'var(--border)', color: activeTab === 'directory' ? '#FFFFFF' : 'var(--text-secondary)', padding: '1px 7px', borderRadius: 99, fontSize: 11 }}>{Object.keys(CONNECTOR_SCHEMAS).length}</span>
           </button>
         </div>
 
-        {/* ── TAB 1: CONNECTOR DIRECTORY (First Tab) ────────────────────────────── */}
+        {/* ── TAB 1: CONNECTED SYSTEMS & COMPOSE (Default View) ───────────────────── */}
+        {activeTab === 'connected' && (
+          <>
+            {/* Top 4 KPI Summary Cards matching Screenshot 2 */}
+            <div className="kpi-grid-4">
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                    <Server size={18} />
+                  </div>
+                  <span className="kpi-label">Connected Tools</span>
+                </div>
+                <div className="kpi-value">{tools.length}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  2 Snowflake • 1 dbt Cloud
+                </div>
+              </div>
+
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#EEF2FF', color: '#6366F1' }}>
+                    <Shield size={18} />
+                  </div>
+                  <span className="kpi-label">Healthy Connections</span>
+                </div>
+                <div className="kpi-value" style={{ color: '#10B981' }}>100%</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  All systems operational
+                </div>
+              </div>
+
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
+                    <Clock size={18} />
+                  </div>
+                  <span className="kpi-label">Last Sync (Latest)</span>
+                </div>
+                <div className="kpi-value">21m ago</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Most recent pipeline sync
+                </div>
+              </div>
+
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                    <Zap size={18} />
+                  </div>
+                  <span className="kpi-label">Avg. Latency</span>
+                </div>
+                <div className="kpi-value">1.1s</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Across all connections
+                </div>
+              </div>
+            </div>
+
+            {/* Connected Tools Table Card with Professional Header Buttons */}
+            <div className="card mt-4">
+              <div className="card-header" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }} />
+                    <span className="card-title" style={{ fontSize: 15, fontWeight: 700 }}>Connected Tools</span>
+                  </div>
+                  <span className="card-subtitle" style={{ fontSize: 12, marginTop: 2 }}>
+                    Here are the tools and systems you've already connected to VITHI. You can test, edit, or manage each connection.
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {/* COMPOSE PIPELINE BUTTON (Screenshot 2 style) */}
+                  <button
+                    className="export-btn"
+                    onClick={() => setComposeModalOpen(true)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600,
+                      padding: '8px 16px', borderRadius: 8, background: 'var(--bg-card)',
+                      border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    <Network size={15} color="#10B981" />
+                    <span>Compose Pipeline</span>
+                  </button>
+
+                  {/* SYNC ALL BUTTON (Screenshot 2 style - Solid Green) */}
+                  <button
+                    className="export-btn"
+                    onClick={handleStartLiveSync}
+                    disabled={syncing}
+                    style={{
+                      background: '#10B981', color: '#FFFFFF', border: '1px solid #059669',
+                      display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600,
+                      padding: '8px 16px', borderRadius: 8, cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)'
+                    }}
+                  >
+                    <RefreshCw size={14} className={syncing ? 'spin' : ''} />
+                    <span>{syncing ? 'Syncing...' : 'Sync All'}</span>
+                  </button>
+
+                  <button className="icon-btn" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+                    <MoreVertical size={15} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-wrapper">
+                <table className="vithi-table">
+                  <thead>
+                    <tr>
+                      <th>Tool Name</th>
+                      <th>Type</th>
+                      <th>Role</th>
+                      <th>Configuration / Account</th>
+                      <th>Status</th>
+                      <th>Last Tested</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tools.map((tool, idx) => {
+                      const isSnowflake = tool.connector_type === 'snowflake';
+                      const isDbt = tool.connector_type === 'dbt';
+                      const tResult = testResults[tool.tool_id];
+
+                      let role = tool.config?.role || tool.role || (idx === 0 ? 'SOURCE' : idx === 1 ? 'TARGET' : 'ETL');
+                      let roleBg = role === 'SOURCE' ? '#ECFDF5' : role === 'TARGET' ? '#EEF2FF' : '#FEF3C7';
+                      let roleColor = role === 'SOURCE' ? '#047857' : role === 'TARGET' ? '#4338CA' : '#B45309';
+
+                      const displayName = isSnowflake
+                        ? (role === 'SOURCE' ? 'sf-inventory-raw' : 'sf-inventory-final')
+                        : 'dbt-inventory-job';
+
+                      const subTitle = isSnowflake
+                        ? (role === 'SOURCE' ? 'INVENTORY_ANALYTICS.RAW_DATA' : 'INVENTORY_ANALYTICS.FINAL_DATA')
+                        : 'Job #70506183138234';
+
+                      const datasetName = role === 'SOURCE' ? 'RAW_INVENTORY' : role === 'TARGET' ? 'DIM_INVENTORY' : 'inventory_analytics';
+
+                      return (
+                        <tr
+                          key={tool.tool_id || idx}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setSelectedToolForInspection({ tool, role, datasetName })}
+                        >
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{
+                                width: 38, height: 38, borderRadius: 8,
+                                background: isSnowflake ? 'rgba(41, 181, 232, 0.12)' : 'rgba(255, 105, 75, 0.12)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20
+                              }}>
+                                {isSnowflake ? '❄️' : '🟧'}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 13 }}>
+                                  {displayName}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                  {subTitle}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>
+                            <span style={{
+                              padding: '4px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
+                              background: isSnowflake ? '#EFF6FF' : '#FFF7ED',
+                              color: isSnowflake ? '#2563EB' : '#EA580C'
+                            }}>
+                              {isSnowflake ? 'Snowflake' : 'dbt Cloud'}
+                            </span>
+                          </td>
+
+                          <td>
+                            <span style={{
+                              padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                              background: roleBg, color: roleColor, letterSpacing: '0.04em'
+                            }}>
+                              {role}
+                            </span>
+                          </td>
+
+                          <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                            {isSnowflake ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <Database size={12} color="#3B82F6" />
+                                  <span><strong>Account:</strong> {tool.config?.account_id || 'nh02575.ap-southeast-7.aws'}</span>
+                                </div>
+                                <div>Warehouse: <code>{tool.config?.warehouse_id || 'INVENTORY_WH'}</code></div>
+                                <div>Database: <code>{tool.config?.database_id || 'INVENTORY_ANALYTICS'}</code></div>
+                                <div>Schema: <code>{tool.config?.schema || (role === 'SOURCE' ? 'RAW_DATA' : 'FINAL_DATA')}</code></div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <Database size={12} color="#EA580C" />
+                                  <span><strong>Account:</strong> {tool.config?.account_id || '70506183159506'}</span>
+                                </div>
+                                <div>Project: <code>{tool.config?.project_name || 'inventory_analytics'}</code></div>
+                                <div>Job: <strong>{tool.config?.job_id || '70506183138234'}</strong></div>
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <span className="status-pill good" style={{ alignSelf: 'flex-start' }}>
+                                ● Verified Connected
+                              </span>
+                              {tResult && (
+                                <span style={{ fontSize: 10.5, color: tResult.ok ? '#10B981' : '#EF4444', fontWeight: 500 }}>
+                                  {tResult.msg}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                            <div>{idx === 0 ? '21m ago' : idx === 1 ? '19m ago' : '18m ago'}</div>
+                            <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>May 11, 12:30 PM</div>
+                          </td>
+
+                          <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              {/* TEST BUTTON (Screenshot 2: Purple pill with lightning bolt) */}
+                              <button
+                                className="export-btn"
+                                onClick={() => handleTestConnection(tool.tool_id)}
+                                disabled={testingToolId === tool.tool_id}
+                                style={{
+                                  padding: '5px 12px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  background: '#EEF2FF', color: '#4F46E5', border: '1px solid #C7D2FE', borderRadius: 6, fontWeight: 600
+                                }}
+                              >
+                                <Zap size={12} color="#4F46E5" className={testingToolId === tool.tool_id ? 'spin' : ''} />
+                                <span>{testingToolId === tool.tool_id ? 'Testing...' : 'Test'}</span>
+                              </button>
+
+                              {/* EDIT BUTTON (Screenshot 2: Light blue pill with pencil) */}
+                              <button
+                                className="export-btn"
+                                onClick={() => setSelectedToolForInspection({ tool, role, datasetName })}
+                                style={{
+                                  padding: '5px 10px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4,
+                                  background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 6, fontWeight: 600
+                                }}
+                              >
+                                <Edit2 size={11} />
+                                <span>Edit</span>
+                              </button>
+
+                              <button className="icon-btn" style={{ width: 28, height: 28 }}>
+                                <MoreVertical size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Bottom Callout Banner matching Screenshot 2 */}
+            <div style={{
+              marginTop: 20, padding: '16px 20px', borderRadius: 8,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
+                  <Check size={16} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>Need to add a new tool?</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+                    Go to the Connector Directory tab to explore and connect more data sources, transformation tools, and destinations.
+                  </div>
+                </div>
+              </div>
+
+              <button
+                className="export-btn"
+                onClick={() => setActiveTab('directory')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, padding: '7px 14px' }}
+              >
+                <span>Go to Connector Directory</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── TAB 2: CONNECTOR DIRECTORY (Screenshot 1 View) ───────────────────── */}
         {activeTab === 'directory' && (
           <>
             {/* Search & Category Filter Pills */}
@@ -656,319 +956,6 @@ export default function Integrations() {
                   </div>
                 </div>
               ))}
-            </div>
-          </>
-        )}
-
-        {/* ── TAB 2: CONNECTED SYSTEMS & COMPOSE (Second Tab) ───────────────────── */}
-        {activeTab === 'connected' && (
-          <>
-            {/* Top 4 KPI Summary Cards */}
-            <div className="kpi-grid-4">
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                    <Server size={18} />
-                  </div>
-                  <span className="kpi-label">Connected Tools</span>
-                </div>
-                <div className="kpi-value">{tools.length}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  2 Snowflake • 1 dbt Cloud
-                </div>
-              </div>
-
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#EEF2FF', color: '#6366F1' }}>
-                    <Shield size={18} />
-                  </div>
-                  <span className="kpi-label">Healthy Connections</span>
-                </div>
-                <div className="kpi-value" style={{ color: '#10B981' }}>100%</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  All systems operational
-                </div>
-              </div>
-
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
-                    <Clock size={18} />
-                  </div>
-                  <span className="kpi-label">Last Sync (Latest)</span>
-                </div>
-                <div className="kpi-value">21m ago</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Most recent pipeline sync
-                </div>
-              </div>
-
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                    <Zap size={18} />
-                  </div>
-                  <span className="kpi-label">Avg. Latency</span>
-                </div>
-                <div className="kpi-value">1.1s</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Across all connections
-                </div>
-              </div>
-            </div>
-
-            {/* Connected Tools & Pipeline Composition Actions */}
-            <div className="card mt-4">
-              <div className="card-header">
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }} />
-                    <span className="card-title">Connected Tools & Pipelines</span>
-                  </div>
-                  <span className="card-subtitle">
-                    Registered connections powering the data observability pipeline. Click any tool row to inspect its live data schema structure.
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <button
-                    className="export-btn"
-                    onClick={() => setComposeModalOpen(true)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, padding: '7px 14px' }}
-                  >
-                    <Network size={14} color="#10B981" />
-                    <span>Compose Pipeline</span>
-                  </button>
-
-                  <button
-                    className="export-btn"
-                    onClick={handleStartLiveSync}
-                    disabled={syncing}
-                    style={{ background: '#10B981', color: '#FFFFFF', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, padding: '7px 14px' }}
-                  >
-                    <RefreshCw size={14} className={syncing ? 'spin' : ''} />
-                    <span>{syncing ? 'Syncing...' : 'Sync All'}</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="table-wrapper">
-                <table className="vithi-table">
-                  <thead>
-                    <tr>
-                      <th>Tool Name & Schema</th>
-                      <th>Type</th>
-                      <th>Pipeline Role</th>
-                      <th>Configuration & Asset Binding</th>
-                      <th>Status</th>
-                      <th>Last Tested</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tools.map((tool, idx) => {
-                      const isSnowflake = tool.connector_type === 'snowflake';
-                      const isDbt = tool.connector_type === 'dbt';
-                      const tResult = testResults[tool.tool_id];
-
-                      let role = tool.config?.role || tool.role || (idx === 0 ? 'SOURCE' : idx === 1 ? 'TARGET' : 'ETL');
-                      let roleBg = role === 'SOURCE' ? '#ECFDF5' : role === 'TARGET' ? '#EEF2FF' : '#FEF3C7';
-                      let roleColor = role === 'SOURCE' ? '#047857' : role === 'TARGET' ? '#4338CA' : '#B45309';
-
-                      const datasetName = role === 'SOURCE' ? 'RAW_INVENTORY' : role === 'TARGET' ? 'DIM_INVENTORY' : 'inventory_analytics';
-
-                      return (
-                        <tr
-                          key={tool.tool_id || idx}
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => setSelectedToolForInspection({ tool, role, datasetName })}
-                        >
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div style={{
-                                width: 36, height: 36, borderRadius: 8,
-                                background: isSnowflake ? 'rgba(41, 181, 232, 0.12)' : 'rgba(255, 105, 75, 0.12)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18
-                              }}>
-                                {isSnowflake ? '❄️' : '🟧'}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span>{tool.name}</span>
-                                  <Eye size={12} style={{ color: 'var(--text-muted)' }} title="Click to inspect schema structure" />
-                                </div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  {tool.config?.schema ? `${tool.config.database_id || 'INVENTORY_ANALYTICS'}.${tool.config.schema}.${datasetName}` : `Job #${tool.config?.job_id || '70506183138234'}`}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td>
-                            <span style={{
-                              padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                              background: isSnowflake ? '#EFF6FF' : '#FFF7ED',
-                              color: isSnowflake ? '#2563EB' : '#EA580C'
-                            }}>
-                              {isSnowflake ? 'Snowflake' : 'dbt Cloud'}
-                            </span>
-                          </td>
-
-                          <td>
-                            <span style={{
-                              padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-                              background: roleBg, color: roleColor, letterSpacing: '0.04em'
-                            }}>
-                              {role}
-                            </span>
-                          </td>
-
-                          <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                            {isSnowflake ? (
-                              <div>
-                                <div><strong style={{ color: 'var(--text-primary)' }}>Account:</strong> {tool.config?.account_id || 'nh02575.ap-southeast-7.aws'}</div>
-                                <div>Warehouse: <code>{tool.config?.warehouse_id || 'INVENTORY_WH'}</code> &bull; Table: <strong style={{ color: 'var(--brand-dark)' }}>{datasetName}</strong></div>
-                              </div>
-                            ) : (
-                              <div>
-                                <div><strong style={{ color: 'var(--text-primary)' }}>Account:</strong> {tool.config?.account_id || '70506183159506'}</div>
-                                <div>Project: <code>{tool.config?.project_name || 'inventory_analytics'}</code> &bull; Job: <strong>{tool.config?.job_id || '70506183138234'}</strong></div>
-                              </div>
-                            )}
-                          </td>
-
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <span className="status-pill good" style={{ alignSelf: 'flex-start' }}>
-                                ● Verified Connected
-                              </span>
-                              {tResult && (
-                                <span style={{ fontSize: 10.5, color: tResult.ok ? '#10B981' : '#EF4444', fontWeight: 500 }}>
-                                  {tResult.msg}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                            <div>{idx === 0 ? '21m ago' : idx === 1 ? '19m ago' : '18m ago'}</div>
-                            <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>May 11, 12:30 PM</div>
-                          </td>
-
-                          <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <button
-                                className="export-btn"
-                                onClick={() => handleTestConnection(tool.tool_id)}
-                                disabled={testingToolId === tool.tool_id}
-                                style={{ padding: '4px 10px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                title="Test live credentials"
-                              >
-                                <Zap size={12} color="#6366F1" className={testingToolId === tool.tool_id ? 'spin' : ''} />
-                                {testingToolId === tool.tool_id ? 'Testing...' : 'Test'}
-                              </button>
-
-                              <button
-                                className="export-btn"
-                                onClick={() => setSelectedToolForInspection({ tool, role, datasetName })}
-                                style={{ padding: '4px 8px', fontSize: 11.5 }}
-                                title="View schema columns & metadata"
-                              >
-                                <Table size={12} /> Schema
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* 3-Tier Pipeline Composition Topology Diagram */}
-            <div className="card mt-4" style={{ padding: '18px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Network size={16} color="#10B981" />
-                    <span style={{ fontWeight: 700, fontSize: 14 }}>Active Pipeline Composition Architecture</span>
-                  </div>
-                  <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                    Pipeline <strong>inventory_etl</strong> (ID: <code>3794bea7-75b1-4eba-b0cc-bd253419aafa</code>)
-                  </span>
-                </div>
-                <button
-                  className="export-btn"
-                  onClick={() => setComposeModalOpen(true)}
-                  style={{ fontSize: 11.5, padding: '4px 10px' }}
-                >
-                  <Edit2 size={12} /> Recompose Pipeline
-                </button>
-              </div>
-
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '20px 24px', background: 'var(--bg-card-subtle)', borderRadius: 10,
-                border: '1px solid var(--border)', flexWrap: 'wrap', gap: 16
-              }}>
-                {/* 1. SOURCE NODE */}
-                <div style={{
-                  flex: '1 1 220px', padding: 14, borderRadius: 8, background: 'var(--bg-card)',
-                  border: '1px solid #A7F3D0', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.05)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4 }}>
-                      1. SOURCE (Snowflake)
-                    </span>
-                    <span style={{ fontSize: 16 }}>❄️</span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>RAW_DATA.RAW_INVENTORY</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Instance: <code>inventory_etl-source</code></div>
-                  <div style={{ fontSize: 10.5, color: '#10B981', marginTop: 4, fontWeight: 600 }}>● 65 source rows verified</div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-                  <ArrowRight size={22} />
-                </div>
-
-                {/* 2. ETL ENGINE NODE */}
-                <div style={{
-                  flex: '1 1 220px', padding: 14, borderRadius: 8, background: 'var(--bg-card)',
-                  border: '1px solid #FED7AA', boxShadow: '0 2px 4px rgba(249, 115, 22, 0.05)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#C2410C', background: '#FFF7ED', padding: '2px 6px', borderRadius: 4 }}>
-                      2. TRANSFORM (dbt Cloud)
-                    </span>
-                    <span style={{ fontSize: 16 }}>🟧</span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>inventory_analytics</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Job: <code>#70506183138234</code></div>
-                  <div style={{ fontSize: 10.5, color: '#EA580C', marginTop: 4, fontWeight: 600 }}>● 25 data quality checks active</div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-                  <ArrowRight size={22} />
-                </div>
-
-                {/* 3. TARGET NODE */}
-                <div style={{
-                  flex: '1 1 220px', padding: 14, borderRadius: 8, background: 'var(--bg-card)',
-                  border: '1px solid #C7D2FE', boxShadow: '0 2px 4px rgba(99, 102, 241, 0.05)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#4338CA', background: '#EEF2FF', padding: '2px 6px', borderRadius: 4 }}>
-                      3. TARGET (Snowflake)
-                    </span>
-                    <span style={{ fontSize: 16 }}>❄️</span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>FINAL_DATA.DIM_INVENTORY</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Instance: <code>inventory_etl-target</code></div>
-                  <div style={{ fontSize: 10.5, color: '#6366F1', marginTop: 4, fontWeight: 600 }}>● 65 mart rows published</div>
-                </div>
-              </div>
             </div>
           </>
         )}
@@ -1155,7 +1142,7 @@ export default function Integrations() {
           </div>
         )}
 
-        {/* ── MODAL 3: LIVE REAL-TIME SYNC EXECUTION TERMINAL ─────────────────────── */}
+        {/* ── MODAL 3: LIVE REAL-TIME SYNC EXECUTION TERMINAL (Instant Pop-up) ─────── */}
         {syncModalOpen && (
           <div className="modal-backdrop" onClick={() => !syncing && setSyncModalOpen(false)}>
             <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 650 }}>
