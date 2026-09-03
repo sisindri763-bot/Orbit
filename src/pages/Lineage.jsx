@@ -176,16 +176,17 @@ export default function Lineage() {
       />
 
       <div className="page-body">
-        {/* ── TOP CONTROL BAR ─────────────────────────────────────────────────── */}
+        {/* ── TOP CONTROL BAR (SINGLE CLEAN NON-WRAPPING ROW) ────────────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, flexWrap: 'wrap', padding: '10px 16px', background: 'var(--bg-card)',
+          gap: 12, padding: '10px 16px', background: 'var(--bg-card)',
           border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', overflowX: 'auto'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          {/* Left Controls Group */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             {/* Search Box */}
-            <div className="search-box" style={{ width: 230 }}>
+            <div className="search-box" style={{ width: 220 }}>
               <Search size={13} />
               <input
                 type="text"
@@ -259,42 +260,26 @@ export default function Lineage() {
             </div>
           </div>
 
-          {/* Right Zoom Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              className="export-btn"
-              onClick={() => setZoomLevel(z => Math.min(130, z + 10))}
-              style={{ fontSize: 11.5, padding: '4px 10px', height: 28, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            >
-              <ZoomIn size={12} />
-              <span>Zoom in</span>
-            </button>
+          {/* Right Controls: Compact Zoom + Far Right Inspector Button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            {/* Sleek Compact Zoom Widget */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-card-subtle)', borderRadius: 6, border: '1px solid var(--border)', padding: 2 }}>
+              <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setZoomLevel(z => Math.max(70, z - 10))} title="Zoom Out">
+                <ZoomOut size={12} />
+              </button>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '0 6px', minWidth: 38, textAlign: 'center', color: 'var(--text-primary)' }}>{zoomLevel}%</span>
+              <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setZoomLevel(z => Math.min(130, z + 10))} title="Zoom In">
+                <ZoomIn size={12} />
+              </button>
+              <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setZoomLevel(100)} title="Reset / Fit View">
+                <Maximize2 size={12} />
+              </button>
+            </div>
 
-            <button
-              className="export-btn"
-              onClick={() => setZoomLevel(z => Math.max(70, z - 10))}
-              style={{ fontSize: 11.5, padding: '4px 10px', height: 28, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            >
-              <ZoomOut size={12} />
-              <span>Zoom out</span>
-            </button>
-
-            <button
-              className="export-btn"
-              onClick={() => setZoomLevel(100)}
-              style={{ fontSize: 11.5, padding: '4px 10px', height: 28, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            >
-              <Maximize2 size={12} />
-              <span>Fit View</span>
-            </button>
-
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{zoomLevel}%</span>
-
-            {/* Inspector Toggle Button */}
+            {/* Far Right Corner: Inspector Toggle Button */}
             <button
               onClick={() => setDrawerOpen(o => !o)}
               style={{
-                marginLeft: 8,
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
                 cursor: 'pointer', transition: 'all 0.15s',
