@@ -176,29 +176,29 @@ export default function Lineage() {
       />
 
       <div className="page-body">
-        {/* ── TOP CONTROL BAR (SINGLE CLEAN NON-WRAPPING ROW) ────────────────── */}
+        {/* ── TOP CONTROL BAR (CLEAN, COMPACT, NEVER CLIPPED) ────────────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, padding: '10px 16px', background: 'var(--bg-card)',
-          border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', overflowX: 'auto'
+          gap: 8, padding: '8px 12px', background: 'var(--bg-card)',
+          border: '1px solid var(--border)', borderRadius: 10, marginBottom: 14,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%'
         }}>
           {/* Left Controls Group */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 1, minWidth: 0 }}>
             {/* Search Box */}
-            <div className="search-box" style={{ width: 220 }}>
-              <Search size={13} />
+            <div className="search-box" style={{ width: 180, flexShrink: 1 }}>
+              <Search size={12} />
               <input
                 type="text"
-                placeholder="Search tables, models, or columns..."
+                placeholder="Search models, tables..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                style={{ height: 32, fontSize: 12, paddingLeft: 30 }}
+                style={{ height: 30, fontSize: 11.5, paddingLeft: 28 }}
               />
             </div>
 
             {/* Pipeline Selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, flexShrink: 0 }}>
               <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Pipeline:</span>
               <select
                 className="select-control"
@@ -208,7 +208,7 @@ export default function Lineage() {
                   const found = pipelinesList.find(p => p.pipeline_id === e.target.value);
                   if (found) setSelectedPipelineName(found.pipeline_name);
                 }}
-                style={{ height: 32, fontWeight: 600, padding: '0 10px' }}
+                style={{ height: 30, fontWeight: 600, padding: '0 8px', fontSize: 11.5 }}
               >
                 {pipelinesList.length > 0 ? (
                   pipelinesList.map(p => (
@@ -223,11 +223,11 @@ export default function Lineage() {
             </div>
 
             {/* Level Toggle ([Table Level] | [Column Level (Active)]) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg-card-subtle)', padding: 3, borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-card-subtle)', padding: 2, borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 }}>
               <button
                 onClick={() => setLevel('table')}
                 style={{
-                  padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600,
+                  padding: '4px 10px', borderRadius: 4, border: 'none', fontSize: 11, fontWeight: 600,
                   cursor: 'pointer', transition: 'all 0.15s',
                   background: level === 'table' ? '#10B981' : 'transparent',
                   color: level === 'table' ? '#FFFFFF' : 'var(--text-secondary)'
@@ -238,7 +238,7 @@ export default function Lineage() {
               <button
                 onClick={() => setLevel('column')}
                 style={{
-                  padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600,
+                  padding: '4px 10px', borderRadius: 4, border: 'none', fontSize: 11, fontWeight: 600,
                   cursor: 'pointer', transition: 'all 0.15s',
                   background: level === 'column' ? '#10B981' : 'transparent',
                   color: level === 'column' ? '#FFFFFF' : 'var(--text-secondary)'
@@ -249,11 +249,11 @@ export default function Lineage() {
             </div>
 
             {/* Depth Tag */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, flexShrink: 0 }}>
               <span style={{ color: 'var(--text-secondary)' }}>Depth</span>
               <span style={{
                 background: 'var(--bg-card-subtle)', border: '1px solid var(--border)',
-                padding: '3px 8px', borderRadius: 6, fontWeight: 700, fontSize: 11
+                padding: '2px 6px', borderRadius: 4, fontWeight: 700, fontSize: 10.5
               }}>
                 +2 / -2
               </span>
@@ -261,18 +261,18 @@ export default function Lineage() {
           </div>
 
           {/* Right Controls: Compact Zoom + Far Right Inspector Button */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {/* Sleek Compact Zoom Widget */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2, background: 'var(--bg-card-subtle)', borderRadius: 6, border: '1px solid var(--border)', padding: 2 }}>
-              <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setZoomLevel(z => Math.max(70, z - 10))} title="Zoom Out">
-                <ZoomOut size={12} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 1, background: 'var(--bg-card-subtle)', borderRadius: 6, border: '1px solid var(--border)', padding: 2 }}>
+              <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setZoomLevel(z => Math.max(70, z - 10))} title="Zoom Out">
+                <ZoomOut size={11} />
               </button>
-              <span style={{ fontSize: 11, fontWeight: 600, padding: '0 6px', minWidth: 38, textAlign: 'center', color: 'var(--text-primary)' }}>{zoomLevel}%</span>
-              <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setZoomLevel(z => Math.min(130, z + 10))} title="Zoom In">
-                <ZoomIn size={12} />
+              <span style={{ fontSize: 10.5, fontWeight: 600, padding: '0 4px', minWidth: 32, textAlign: 'center', color: 'var(--text-primary)' }}>{zoomLevel}%</span>
+              <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setZoomLevel(z => Math.min(130, z + 10))} title="Zoom In">
+                <ZoomIn size={11} />
               </button>
-              <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setZoomLevel(100)} title="Reset / Fit View">
-                <Maximize2 size={12} />
+              <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setZoomLevel(100)} title="Reset / Fit View">
+                <Maximize2 size={11} />
               </button>
             </div>
 
@@ -280,16 +280,17 @@ export default function Lineage() {
             <button
               onClick={() => setDrawerOpen(o => !o)}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '5px 12px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
                 cursor: 'pointer', transition: 'all 0.15s',
                 background: drawerOpen ? '#ECFDF5' : 'var(--bg-card-subtle)',
                 color: drawerOpen ? '#059669' : 'var(--text-secondary)',
                 border: `1.5px solid ${drawerOpen ? '#A7F3D0' : 'var(--border)'}`,
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                whiteSpace: 'nowrap'
               }}
             >
-              <Table size={13} color="#059669" />
+              <Table size={12} color="#059669" />
               <span>{drawerOpen ? 'Hide Inspector' : 'Show Inspector'}</span>
             </button>
           </div>
