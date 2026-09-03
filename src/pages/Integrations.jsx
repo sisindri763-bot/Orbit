@@ -971,16 +971,11 @@ export default function Integrations() {
                         </div>
 
                         <button
+                          className="connector-connect-btn"
                           onClick={() => handleOpenConnect(tool.key)}
-                          style={{
-                            marginTop: 10, padding: '5px 10px', borderRadius: 6,
-                            background: 'var(--bg-card)', border: '1px solid var(--border)',
-                            color: 'var(--text-primary)', fontSize: 11.5, fontWeight: 600,
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
-                          }}
                         >
                           <span>Connect</span>
-                          <ArrowRight size={11} />
+                          <ArrowRight size={12} />
                         </button>
                       </div>
                     ))}
