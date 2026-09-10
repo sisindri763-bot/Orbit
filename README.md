@@ -39,7 +39,7 @@ npm run build
 
 | Variable | Description |
 |---|---|
-| `VITE_API_BASE_URL` | VITHI FastAPI backend URL |
+| `API_BACKEND_URL` | Backend host (local `.env` + Vercel env). Never commit a real value. |
 
 ## API
 Connected to: `https://vithi-observability-dasboard.vercel.app`

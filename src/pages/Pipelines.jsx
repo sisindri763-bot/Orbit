@@ -166,11 +166,13 @@ export default function Pipelines() {
   const totalRuns = filtered.length || runs.length;
   const successfulRuns = runs.filter(r => (r.status || '').toLowerCase() === 'success').length;
   const failedRuns = runs.filter(r => (r.status || '').toLowerCase() === 'failed').length;
-  const successRatePct = totalRuns > 0 ? ((successfulRuns / totalRuns) * 100).toFixed(1) : (pipelinesList[0]?.success_rate_pct != null ? pipelinesList[0].success_rate_pct : '100.0');
+  const successRatePct = totalRuns > 0
+    ? ((successfulRuns / totalRuns) * 100).toFixed(1)
+    : (pipelinesList[0]?.success_rate_pct != null ? pipelinesList[0].success_rate_pct : '—');
 
   const avgDurationSec = totalRuns > 0
     ? Math.round(runs.reduce((sum, r) => sum + (Number(r.duration || r.duration_seconds) || 0), 0) / totalRuns)
-    : (pipelinesList[0]?.avg_duration_seconds || 15);
+    : (pipelinesList[0]?.avg_duration_seconds ?? null);
 
   const clearFilters = () => {
     setSearch('');
@@ -412,8 +414,8 @@ export default function Pipelines() {
                         <td><span className="tag">{pipe.target_tool || 'snowflake'}</span></td>
                         <td><span className={`status-pill ${statusClass}`}>{pipe.status || 'Active'}</span></td>
                         <td style={{ fontWeight: 600 }}>{pipe.total_runs ?? pipe.runs ?? 0}</td>
-                        <td>{pipe.success_rate_pct != null ? `${pipe.success_rate_pct}%` : (pipe.success_rate || '100%')}</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{pipe.avg_duration ?? (pipe.avg_duration_seconds ? `${pipe.avg_duration_seconds}s` : '15s')}</td>
+                        <td>{pipe.success_rate_pct != null ? `${pipe.success_rate_pct}%` : (pipe.success_rate || '—')}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{pipe.avg_duration ?? (pipe.avg_duration_seconds != null ? `${pipe.avg_duration_seconds}s` : '—')}</td>
                         <td style={{ color: 'var(--text-secondary)' }}>{pipe.last_run_age || pipe.last_run || pipe.global_last_run || 'recently'}</td>
                       </tr>
                     );

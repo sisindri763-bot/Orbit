@@ -10,6 +10,7 @@ import PageHeader from '../components/PageHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
   fetchTools,
+  fetchPipelines,
   testToolConnection,
   triggerSync,
   createTool,
@@ -267,6 +268,8 @@ export default function Integrations() {
 
   // Live Backend Data
   const [tools, setTools] = useState([]);
+  const [pipelines, setPipelines] = useState([]);
+  const [activePipeline, setActivePipeline] = useState(null);
   const [schemaData, setSchemaData] = useState(null);
   const [bindings, setBindings] = useState([]);
 
@@ -288,21 +291,21 @@ export default function Integrations() {
 
   // Compose Pipeline State
   const [composeForm, setComposeForm] = useState({
-    pipeline_name: 'inventory_etl',
+    pipeline_name: '',
     source_tool_id: '',
     etl_tool_id: '',
     target_tool_id: '',
     make_active: true,
-    description: 'Snowflake Ingestion -> dbt Cloud Transform -> Snowflake Data Mart'
+    description: ''
   });
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [toolsRes, schemaRes, bindingsRes] = await Promise.allSettled([
+      const [toolsRes, schemaRes, pipesRes] = await Promise.allSettled([
         fetchTools(),
         fetchSchema(),
-        fetchPipelineBindings('3794bea7-75b1-4eba-b0cc-bd253419aafa')
+        fetchPipelines({ preset: 'all' }),
       ]);
 
       let toolList = [];
@@ -313,21 +316,37 @@ export default function Integrations() {
       if (schemaRes.status === 'fulfilled' && schemaRes.value) {
         setSchemaData(schemaRes.value);
       }
-      if (bindingsRes.status === 'fulfilled' && bindingsRes.value) {
-        setBindings(bindingsRes.value.items || []);
+
+      let pipeList = [];
+      if (pipesRes.status === 'fulfilled' && pipesRes.value) {
+        pipeList = pipesRes.value.items || pipesRes.value.pipelines || (Array.isArray(pipesRes.value) ? pipesRes.value : []);
+        setPipelines(pipeList);
+        const active = pipeList.find(p => p.is_sync_default || p.is_active) || pipeList[0] || null;
+        setActivePipeline(active);
+        if (active?.pipeline_id) {
+          const bindingsRes = await fetchPipelineBindings(active.pipeline_id).catch(() => null);
+          setBindings(bindingsRes?.items || bindingsRes?.bindings || []);
+        } else {
+          setBindings([]);
+        }
+        if (active?.pipeline_name) {
+          setComposeForm(prev => ({ ...prev, pipeline_name: active.pipeline_name }));
+        }
       }
 
       // Initialize compose form defaults with real tool IDs
       if (toolList.length > 0) {
-        const src = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'SOURCE' || t.kind === 'database');
+        const src = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'SOURCE')
+          || toolList.find(t => t.kind === 'database');
         const etl = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'ETL' || t.kind === 'etl');
-        const tgt = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'TARGET' || (t.kind === 'database' && t !== src));
+        const tgt = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'TARGET')
+          || toolList.filter(t => t.kind === 'database' && t.tool_id !== src?.tool_id)[0];
 
         setComposeForm(prev => ({
           ...prev,
           source_tool_id: src ? src.tool_id : (toolList[0]?.tool_id || ''),
-          etl_tool_id: etl ? etl.tool_id : (toolList[2]?.tool_id || toolList[0]?.tool_id || ''),
-          target_tool_id: tgt ? tgt.tool_id : (toolList[1]?.tool_id || toolList[0]?.tool_id || ''),
+          etl_tool_id: etl ? etl.tool_id : (toolList.find(t => t.kind === 'etl')?.tool_id || ''),
+          target_tool_id: tgt ? tgt.tool_id : '',
         }));
       }
     } catch (e) {
@@ -360,51 +379,36 @@ export default function Integrations() {
     }
   };
 
-  // Enterprise Real-Time Sync Console Action
+  // Real sync — logs come from API response only
   const handleStartLiveSync = async () => {
     setSyncModalOpen(true);
     setSyncing(true);
-    setSyncProgress(15);
+    setSyncProgress(20);
+    const pipeName = activePipeline?.pipeline_name;
+    const pipeId = activePipeline?.pipeline_id;
     setSyncLogs([
-      `[${new Date().toLocaleTimeString()}] [INIT] Initiating live sync across all connected pipeline data systems...`,
-      `[${new Date().toLocaleTimeString()}] [AUTH] Connecting to Snowflake warehouse 'INVENTORY_WH' (nh02575.ap-southeast-7.aws)...`
+      `[${new Date().toLocaleTimeString()}] [INIT] Starting sync${pipeName ? ` for ${pipeName}` : ''}...`,
     ]);
 
     try {
-      setTimeout(() => {
-        setSyncProgress(45);
-        setSyncLogs(prev => [
-          ...prev,
-          `[${new Date().toLocaleTimeString()}] [SOURCE] Fetched source schema snapshot from 'INVENTORY_ANALYTICS.RAW_DATA.RAW_INVENTORY' (208 records, 11.2 KB)...`,
-          `[${new Date().toLocaleTimeString()}] [ETL] Evaluating dbt Cloud transform engine (Account: 70506183159506, Job: #70506183138234)...`
-        ]);
-      }, 700);
+      const payload = { refresh_db: true };
+      if (pipeId) payload.pipeline_id = pipeId;
+      else if (pipeName) payload.pipeline_name = pipeName;
 
-      setTimeout(() => {
-        setSyncProgress(80);
-        setSyncLogs(prev => [
-          ...prev,
-          `[${new Date().toLocaleTimeString()}] [DQ] Evaluated 25 dbt assertion tests: 24 passed, 1 timeliness notice (96.0% quality score)...`,
-          `[${new Date().toLocaleTimeString()}] [TARGET] Publishing destination mart 'INVENTORY_ANALYTICS.FINAL_DATA.DIM_INVENTORY' (65 rows)...`
-        ]);
-      }, 1400);
-
-      const res = await triggerSync({ pipeline_name: 'inventory_etl', refresh_db: true });
-
-      setTimeout(() => {
-        setSyncProgress(100);
-        setSyncLogs(prev => [
-          ...prev,
-          `[${new Date().toLocaleTimeString()}] [SUCCESS] ${res.message || 'Pipeline synchronization completed successfully! Telemetry updated.'}`
-        ]);
-        setSyncing(false);
-        loadData();
-      }, 2100);
+      setSyncProgress(55);
+      const res = await triggerSync(payload);
+      setSyncProgress(100);
+      setSyncLogs(prev => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] [OK] ${res?.message || JSON.stringify(res) || 'Sync completed'}`,
+      ]);
+      setSyncing(false);
+      loadData();
     } catch (e) {
       setSyncProgress(100);
       setSyncLogs(prev => [
         ...prev,
-        `[${new Date().toLocaleTimeString()}] [ERROR] Sync failed: ${e.response?.data?.detail || e.message}`
+        `[${new Date().toLocaleTimeString()}] [ERROR] Sync failed: ${e.response?.data?.detail || e.message}`,
       ]);
       setSyncing(false);
     }
@@ -674,7 +678,15 @@ export default function Integrations() {
                 </div>
                 <div className="kpi-value">{tools.length}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  2 Snowflake • 1 dbt Cloud
+                  {(() => {
+                    const counts = {};
+                    tools.forEach(t => {
+                      const k = t.connector_type || t.kind || 'tool';
+                      counts[k] = (counts[k] || 0) + 1;
+                    });
+                    const parts = Object.entries(counts).map(([k, n]) => `${n} ${k}`);
+                    return parts.length ? parts.join(' • ') : 'No tools connected';
+                  })()}
                 </div>
               </div>
 
@@ -685,9 +697,13 @@ export default function Integrations() {
                   </div>
                   <span className="kpi-label">Healthy Connections</span>
                 </div>
-                <div className="kpi-value" style={{ color: '#10B981' }}>100%</div>
+                <div className="kpi-value" style={{ color: '#10B981' }}>
+                  {tools.length
+                    ? `${Math.round((tools.filter(t => (t.status || '').toLowerCase() === 'active').length / tools.length) * 100)}%`
+                    : '—'}
+                </div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  All systems operational
+                  Based on tool status from API
                 </div>
               </div>
 
@@ -776,7 +792,8 @@ export default function Integrations() {
                       let roleBg = role === 'SOURCE' ? '#ECFDF5' : role === 'TARGET' ? '#EEF2FF' : '#FEF3C7';
                       let roleColor = role === 'SOURCE' ? '#047857' : role === 'TARGET' ? '#4338CA' : '#B45309';
 
-                      const datasetName = role === 'SOURCE' ? 'RAW_INVENTORY' : role === 'TARGET' ? 'DIM_INVENTORY' : 'inventory_analytics';
+                      const tables = Array.isArray(tool.config?.tables) ? tool.config.tables : [];
+                      const datasetName = tables[0] || tool.config?.schema || tool.config?.project_name || tool.name || '—';
 
                       return (
                         <tr
@@ -799,7 +816,9 @@ export default function Integrations() {
                                   <Eye size={12} style={{ color: 'var(--text-muted)' }} title="Click to inspect schema structure" />
                                 </div>
                                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  {tool.config?.schema ? `${tool.config.database_id || 'INVENTORY_ANALYTICS'}.${tool.config.schema}.${datasetName}` : `Job #${tool.config?.job_id || '70506183138234'}`}
+                                  {tool.config?.schema
+                                    ? `${tool.config.database_id || '—'}.${tool.config.schema}.${datasetName}`
+                                    : (tool.config?.job_id ? `Job #${tool.config.job_id}` : (tool.connection_id || '—'))}
                                 </div>
                               </div>
                             </div>
@@ -828,12 +847,12 @@ export default function Integrations() {
                             {isSnowflake ? (
                               <div>
                                 <div><strong style={{ color: 'var(--text-primary)' }}>Account:</strong> {tool.config?.account_id || 'nh02575.ap-southeast-7.aws'}</div>
-                                <div>Warehouse: <code>{tool.config?.warehouse_id || 'INVENTORY_WH'}</code> &bull; Table: <strong style={{ color: 'var(--brand-dark)' }}>{datasetName}</strong></div>
+                                <div>Warehouse: <code>{tool.config?.warehouse_id || '—'}</code> &bull; Table: <strong style={{ color: 'var(--brand-dark)' }}>{datasetName}</strong></div>
                               </div>
                             ) : (
                               <div>
-                                <div><strong style={{ color: 'var(--text-primary)' }}>Account:</strong> {tool.config?.account_id || '70506183159506'}</div>
-                                <div>Project: <code>{tool.config?.project_name || 'inventory_analytics'}</code> &bull; Job: <strong>{tool.config?.job_id || '70506183138234'}</strong></div>
+                                <div><strong style={{ color: 'var(--text-primary)' }}>Account:</strong> {tool.config?.account_id || '—'}</div>
+                                <div>Project: <code>{tool.config?.project_name || '—'}</code> &bull; Job: <strong>{tool.config?.job_id || '—'}</strong></div>
                               </div>
                             )}
                           </td>
@@ -896,7 +915,9 @@ export default function Integrations() {
                     <span style={{ fontWeight: 700, fontSize: 14 }}>Active Pipeline Composition Architecture</span>
                   </div>
                   <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                    Pipeline <strong>inventory_etl</strong> (ID: <code>3794bea7-75b1-4eba-b0cc-bd253419aafa</code>)
+                    {activePipeline
+                      ? <>Pipeline <strong>{activePipeline.pipeline_name}</strong> (ID: <code>{activePipeline.pipeline_id}</code>)</>
+                      : 'No active pipeline from API'}
                   </span>
                 </div>
                 <button
@@ -924,9 +945,15 @@ export default function Integrations() {
                     </span>
                     <span style={{ fontSize: 16 }}>❄️</span>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>RAW_DATA.RAW_INVENTORY</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Instance: <code>inventory_etl-source</code></div>
-                  <div style={{ fontSize: 10.5, color: '#10B981', marginTop: 4, fontWeight: 600 }}>● 65 source rows verified</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
+                    {activePipeline?.source || tools.find(t => (t.config?.role || '').toUpperCase() === 'SOURCE')?.name || 'Source'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Instance: <code>{tools.find(t => (t.config?.role || '').toUpperCase() === 'SOURCE')?.name || '—'}</code>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: '#10B981', marginTop: 4, fontWeight: 600 }}>
+                    ● {tools.filter(t => t.kind === 'database').length} database tool(s)
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
@@ -944,9 +971,15 @@ export default function Integrations() {
                     </span>
                     <span style={{ fontSize: 16 }}>🟧</span>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>inventory_analytics</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Job: <code>#70506183138234</code></div>
-                  <div style={{ fontSize: 10.5, color: '#EA580C', marginTop: 4, fontWeight: 600 }}>● 25 data quality checks active</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
+                    {activePipeline?.etl || tools.find(t => t.kind === 'etl')?.name || 'ETL'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Tool: <code>{tools.find(t => t.kind === 'etl')?.name || '—'}</code>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: '#EA580C', marginTop: 4, fontWeight: 600 }}>
+                    ● {tools.filter(t => t.kind === 'etl' || t.kind === 'orchestrator').length} transform tool(s)
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
@@ -964,9 +997,15 @@ export default function Integrations() {
                     </span>
                     <span style={{ fontSize: 16 }}>❄️</span>
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>FINAL_DATA.DIM_INVENTORY</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Instance: <code>inventory_etl-target</code></div>
-                  <div style={{ fontSize: 10.5, color: '#6366F1', marginTop: 4, fontWeight: 600 }}>● 65 mart rows published</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
+                    {activePipeline?.target || tools.find(t => (t.config?.role || '').toUpperCase() === 'TARGET')?.name || 'Target'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Instance: <code>{tools.find(t => (t.config?.role || '').toUpperCase() === 'TARGET')?.name || '—'}</code>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: '#6366F1', marginTop: 4, fontWeight: 600 }}>
+                    ● Bound via API pipeline composition
+                  </div>
                 </div>
               </div>
             </div>
@@ -1170,7 +1209,10 @@ export default function Integrations() {
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>Pipeline Sync Execution Console</div>
                     <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                      Target Pipeline: <strong>inventory_etl</strong> (Snowflake &rarr; dbt Cloud &rarr; Snowflake)
+                      Target Pipeline: <strong>{activePipeline?.pipeline_name || 'Sync-default'}</strong>
+                      {activePipeline?.source || activePipeline?.target
+                        ? ` (${activePipeline.source || 'source'} → ${activePipeline.etl || activePipeline.tool || 'etl'} → ${activePipeline.target || 'target'})`
+                        : ''}
                     </div>
                   </div>
                 </div>
@@ -1265,7 +1307,7 @@ export default function Integrations() {
                 }}>
                   <div>
                     <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Warehouse / Host</div>
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>{selectedToolForInspection.tool.config?.warehouse_id || selectedToolForInspection.tool.config?.warehouse || 'INVENTORY_WH'}</div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{selectedToolForInspection.tool.config?.warehouse_id || selectedToolForInspection.tool.config?.warehouse || '—'}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Database & Schema</div>

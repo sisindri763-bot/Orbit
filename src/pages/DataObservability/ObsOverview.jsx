@@ -134,10 +134,10 @@ export default function ObsOverview() {
     return map;
   }, [healthPillars]);
 
-  const freshnessPillar = pillarMap['freshness'] || { score: 0, display: '0.0%', status: 'Delayed' };
-  const volumePillar = pillarMap['volume'] || { score: 100, display: '100.0%', status: 'Good' };
-  const qualityPillar = pillarMap['data_quality'] || { score: 96, display: '96.0%', status: 'Good' };
-  const schemaPillar = pillarMap['schema'] || { score: 100, display: '100.0%', status: 'Good' };
+  const freshnessPillar = pillarMap['freshness'] || { score: null, display: '—', status: 'N/A' };
+  const volumePillar = pillarMap['volume'] || { score: null, display: '—', status: 'N/A' };
+  const qualityPillar = pillarMap['data_quality'] || { score: null, display: '—', status: 'N/A' };
+  const schemaPillar = pillarMap['schema'] || { score: null, display: '—', status: 'N/A' };
 
   // Freshness Breakdown Donut
   const freshnessDonut = useMemo(() => {
@@ -148,16 +148,16 @@ export default function ObsOverview() {
 
     return [
       { name: 'Fresh', value: fresh, color: '#10B981', pct: `${Math.round((fresh / tot) * 100)}%` },
-      { name: 'Delayed', value: delayed || 1, color: '#F59E0B', pct: `${Math.round((delayed / tot) * 100)}%` },
+      { name: 'Delayed', value: delayed, color: '#F59E0B', pct: `${Math.round((delayed / tot) * 100)}%` },
       { name: 'Stale', value: stale, color: '#EF4444', pct: `${Math.round((stale / tot) * 100)}%` },
     ];
   }, [freshnessChecks]);
 
   // Quality Breakdown Donut
   const qualityDonut = useMemo(() => {
-    const passed = qualityChecks.filter(c => (c.status || '').toLowerCase() === 'pass' || (c.status || '').toLowerCase() === 'passed').length || 24;
-    const warn = qualityChecks.filter(c => (c.status || '').toLowerCase() === 'warn' || (c.status || '').toLowerCase() === 'warning').length || 1;
-    const failed = qualityChecks.filter(c => (c.status || '').toLowerCase() === 'fail' || (c.status || '').toLowerCase() === 'failed').length || 0;
+    const passed = qualityChecks.filter(c => (c.status || '').toLowerCase() === 'pass' || (c.status || '').toLowerCase() === 'passed').length;
+    const warn = qualityChecks.filter(c => (c.status || '').toLowerCase() === 'warn' || (c.status || '').toLowerCase() === 'warning').length;
+    const failed = qualityChecks.filter(c => (c.status || '').toLowerCase() === 'fail' || (c.status || '').toLowerCase() === 'failed').length;
     const tot = passed + warn + failed || 1;
 
     return [
@@ -169,7 +169,7 @@ export default function ObsOverview() {
 
   // Schema Donut
   const schemaDonut = useMemo(() => {
-    const monitored = schemaData?.kpis?.find(k => k.id === 'schemas_monitored')?.value ?? 2;
+    const monitored = schemaData?.kpis?.find(k => k.id === 'schemas_monitored')?.value ?? schemaData?.items?.length ?? 0;
     const changes = schemaData?.kpis?.find(k => k.id === 'schema_changes')?.value ?? 0;
     return [
       { name: 'Valid Contract', value: Math.max(0, monitored - changes) || 2, color: '#10B981' },

@@ -317,7 +317,7 @@ export default function Logs() {
                           </td>
                           <td style={{ fontWeight: 600 }}>{l.pipeline_name}</td>
                           <td style={{ fontFamily: 'monospace', fontSize: 11, color: '#6366F1' }}>
-                            #{l.run_id || '70506183701113'}
+                            #{l.run_id || '—'}
                           </td>
                           <td>
                             <span className={`status-pill ${isFailed ? 'failed' : 'success'}`}>
@@ -326,14 +326,14 @@ export default function Logs() {
                           </td>
                           <td>
                             <span className="tool-badge">
-                              {l.tool_name || l.source_tool || l.tool || 'dbt Cloud'}
+                              {l.tool_name || l.source_tool || l.tool || '—'}
                             </span>
                           </td>
                           <td style={{ fontSize: 12, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {l.error_message || l.message || (isFailed ? 'Execution failure' : 'Run success — 65 rows written')}
+                            {l.error_message || l.message || (isFailed ? 'Execution failure' : 'Run completed')}
                           </td>
                           <td style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                            {l.duration_seconds != null ? `${l.duration_seconds}s` : (l.duration || '15s')}
+                            {l.duration_seconds != null ? `${l.duration_seconds}s` : (l.duration || '—')}
                           </td>
                         </tr>
 
@@ -364,7 +364,7 @@ export default function Logs() {
                                         color: activeLogTab === 'dq' ? '#FFFFFF' : 'var(--text-secondary)'
                                       }}
                                     >
-                                      25 DQ Assertions ({rca?.dq_checks?.length || 25})
+                                      25 DQ Assertions ({rca?.dq_checks?.length || rca?.checks?.length || 0})
                                     </button>
 
                                     <button
@@ -395,15 +395,15 @@ export default function Logs() {
                                     background: '#0F172A', color: '#F8FAFC', borderRadius: 8, padding: '12px 16px',
                                     fontFamily: 'monospace', fontSize: 11.5, lineHeight: 1.5, maxHeight: 220, overflowY: 'auto'
                                   }}>
-                                    <div style={{ color: '#94A3B8' }}>08:09:18 | Running with dbt=1.8.0</div>
-                                    <div style={{ color: '#38BDF8' }}>08:09:19 | Registered Snowflake target: INVENTORY_ANALYTICS.FINAL_DATA</div>
-                                    <div style={{ color: '#10B981' }}>08:09:22 | 1 of 2 START sql view model RAW_DATA.stg_inventory [RUN]</div>
-                                    <div style={{ color: '#10B981' }}>08:09:25 | 1 of 2 OK created sql view model RAW_DATA.stg_inventory in 2.81s</div>
-                                    <div style={{ color: '#10B981' }}>08:09:26 | 2 of 2 START sql table model FINAL_DATA.dim_inventory [RUN]</div>
-                                    <div style={{ color: '#10B981' }}>08:09:30 | 2 of 2 OK created sql table model FINAL_DATA.dim_inventory (65 rows) in 4.12s</div>
-                                    <div style={{ color: '#A7F3D0' }}>08:09:32 | Running 25 data quality assertion tests...</div>
-                                    <div style={{ color: '#10B981' }}>08:09:34 | Finished running 2 models, 25 tests in 0 hours 0 minutes and 15.32 seconds.</div>
-                                    <div style={{ color: '#34D399', fontWeight: 700 }}>08:09:34 | Completed successfully. 24 tests passed, 1 timeliness notice.</div>
+                                    {(rca?.console || rca?.logs || rca?.output || l.raw_log || l.message) ? (
+                                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                                        {typeof (rca?.console || rca?.logs || rca?.output || l.raw_log || l.message) === 'string'
+                                          ? (rca?.console || rca?.logs || rca?.output || l.raw_log || l.message)
+                                          : JSON.stringify(rca?.console || rca?.logs || rca?.output || l, null, 2)}
+                                      </pre>
+                                    ) : (
+                                      <div style={{ color: '#94A3B8' }}>No console output from API for this run.</div>
+                                    )}
                                   </div>
                                 )}
 
@@ -420,24 +420,22 @@ export default function Logs() {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        {[
-                                          { test: 'test.inventory.accepted_values_stg_inventory_is_discontinued', dim: 'validity', status: 'pass', dur: '0.36s' },
-                                          { test: 'test.inventory.accepted_values_stg_inventory_warehouse_location', dim: 'validity', status: 'pass', dur: '0.35s' },
-                                          { test: 'test.inventory.not_null_dim_inventory_quantity_in_stock', dim: 'completeness', status: 'pass', dur: '0.30s' },
-                                          { test: 'test.inventory.not_null_stg_inventory_product_id', dim: 'completeness', status: 'pass', dur: '1.66s' },
-                                          { test: 'test.inventory.not_null_dim_inventory_sku', dim: 'completeness', status: 'pass', dur: '0.39s' },
-                                          { test: 'test.inventory.unique_stg_inventory_sku', dim: 'uniqueness', status: 'pass', dur: '0.44s' },
-                                          { test: 'test.inventory.timeliness_dim_inventory_freshness_sla', dim: 'timeliness', status: 'warn', dur: '0.52s' },
-                                        ].map((t, idx) => (
+                                        {(rca?.dq_checks || rca?.checks || []).length === 0 ? (
+                                          <tr>
+                                            <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 16 }}>
+                                              No DQ assertions from RCA API for this run.
+                                            </td>
+                                          </tr>
+                                        ) : (rca?.dq_checks || rca?.checks || []).map((t, idx) => (
                                           <tr key={idx}>
-                                            <td style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 500 }}>{t.test}</td>
-                                            <td><span className="tag">{t.dim}</span></td>
+                                            <td style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 500 }}>{t.test || t.name || t.rule_name || '—'}</td>
+                                            <td><span className="tag">{t.dim || t.dimension || '—'}</span></td>
                                             <td>
-                                              <span className={`status-pill ${t.status === 'pass' ? 'good' : 'warning'}`}>
-                                                {t.status.toUpperCase()}
+                                              <span className={`status-pill ${(t.status || '').toLowerCase().includes('pass') ? 'good' : 'warning'}`}>
+                                                {(t.status || '—').toString().toUpperCase()}
                                               </span>
                                             </td>
-                                            <td style={{ color: 'var(--text-secondary)', fontSize: 11 }}>{t.dur}</td>
+                                            <td style={{ color: 'var(--text-secondary)', fontSize: 11 }}>{t.dur || t.duration || '—'}</td>
                                           </tr>
                                         ))}
                                       </tbody>
@@ -448,25 +446,26 @@ export default function Logs() {
                                 {/* TAB 3: Dataset Assets & Row Counts */}
                                 {activeLogTab === 'assets' && (
                                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                                    <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 12, color: 'var(--brand-dark)' }}>
-                                        <Database size={14} />
-                                        <span>Source: RAW_DATA.RAW_INVENTORY</span>
+                                    {(rca?.assets || []).length === 0 ? (
+                                      <div style={{ gridColumn: '1 / -1', padding: 16, color: 'var(--text-muted)', textAlign: 'center' }}>
+                                        No dataset assets from API for this run.
+                                        {(l.rows_read != null || l.rows_written != null) && (
+                                          <div style={{ marginTop: 8 }}>
+                                            Rows read: <strong>{l.rows_read ?? '—'}</strong> · Rows written: <strong>{l.rows_written ?? '—'}</strong>
+                                          </div>
+                                        )}
                                       </div>
-                                      <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
-                                        Rows Ingested: <strong style={{ color: 'var(--text-primary)' }}>208 rows</strong> &bull; Size: 11.2 KB
+                                    ) : (rca.assets.map((a, idx) => (
+                                      <div key={idx} style={{ padding: 12, borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 12, color: 'var(--brand-dark)' }}>
+                                          <Database size={14} />
+                                          <span>{a.asset_role || a.role || 'Asset'}: {a.object_name || a.name || a.table || '—'}</span>
+                                        </div>
+                                        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+                                          Rows: <strong style={{ color: 'var(--text-primary)' }}>{a.row_count ?? a.rows ?? '—'}</strong>
+                                        </div>
                                       </div>
-                                    </div>
-
-                                    <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 12, color: '#6366F1' }}>
-                                        <Database size={14} />
-                                        <span>Target: FINAL_DATA.DIM_INVENTORY</span>
-                                      </div>
-                                      <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
-                                        Rows Published: <strong style={{ color: 'var(--text-primary)' }}>65 rows</strong> &bull; Size: 4.0 KB
-                                      </div>
-                                    </div>
+                                    )))}
                                   </div>
                                 )}
                               </div>

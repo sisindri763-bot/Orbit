@@ -11,12 +11,9 @@ export const getBaseUrl = () => {
       }
       return custom;
     }
-    // In production on HTTPS (e.g. *.vercel.app), use relative path so Vercel's server-side reverse proxy routes to the backend securely
-    if (window.location.protocol === 'https:') {
-      return '';
-    }
   }
-  return import.meta.env.VITE_API_BASE_URL || '';
+  // Always use relative paths; Vite (local) / Vercel (prod) proxy via API_BACKEND_URL
+  return '';
 };
 
 const api = axios.create({
@@ -59,13 +56,9 @@ export const fetchSystemHealth = () =>
 
 export const fetchFilters = (params = {}) =>
   safeGet('/api/v1/filters', null, params).catch(() => ({
-    ok: true,
-    items: [
-      { pipeline_id: '3794bea7-75b1-4eba-b0cc-bd253419aafa', pipeline_name: 'inventory_etl', tool: 'dbt' }
-    ],
-    pipelines: [
-      { pipeline_id: '3794bea7-75b1-4eba-b0cc-bd253419aafa', pipeline_name: 'inventory_etl', tool: 'dbt' }
-    ]
+    ok: false,
+    items: [],
+    pipelines: [],
   }));
 
 // ── Overview ────────────────────────────────────────────────────────────────

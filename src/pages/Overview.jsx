@@ -353,7 +353,7 @@ export default function Overview() {
                   </span>
                 </div>
                 <div className="kpi-value" style={{ color: '#10B981' }}>
-                  {kpiMap.success_rate?.display ?? (kpiMap.successful_runs?.display || '100%')}
+                  {kpiMap.success_rate?.display ?? (kpiMap.successful_runs?.display || '—')}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                   {kpiMap.successful_runs ? `${kpiMap.successful_runs.value} runs completed` : 'Passing rate'}
@@ -404,7 +404,7 @@ export default function Overview() {
                   </span>
                 </div>
                 <div className="kpi-value">
-                  {kpiMap.avg_duration?.display || '15s'}
+                  {kpiMap.avg_duration?.display || '—'}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                   Execution duration
@@ -646,12 +646,12 @@ export default function Overview() {
                                   />
                                 </div>
                                 <span style={{ fontSize: 12, fontWeight: 500 }}>
-                                  {pipe.success_rate_pct != null ? `${pipe.success_rate_pct}%` : (pipe.success_rate || '100%')}
+                                  {pipe.success_rate_pct != null ? `${pipe.success_rate_pct}%` : (pipe.success_rate || '—')}
                                 </span>
                               </div>
                             </td>
                             <td style={{ color: 'var(--text-secondary)' }}>
-                              {pipe.avg_duration ?? (pipe.avg_duration_seconds ? `${pipe.avg_duration_seconds}s` : '15s')}
+                              {pipe.avg_duration ?? (pipe.avg_duration_seconds != null ? `${pipe.avg_duration_seconds}s` : '—')}
                             </td>
                             <td style={{ color: 'var(--text-secondary)' }}>
                               {pipe.last_run_age || pipe.last_run || pipe.global_last_run || 'recently'}

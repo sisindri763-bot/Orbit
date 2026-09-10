@@ -434,7 +434,7 @@ export default function DataQuality() {
                           {item.test_id ? item.test_id.split('.').slice(-2).join('.') : item.check_id}
                         </td>
                         <td>
-                          <span style={{ fontWeight: 600 }}>{item.pipeline_name || 'inventory_etl'}</span>
+                          <span style={{ fontWeight: 600 }}>{item.pipeline_name || '—'}</span>
                         </td>
                         <td>
                           <span className="tag">{item.dimension ? item.dimension.toUpperCase() : 'QUALITY'}</span>

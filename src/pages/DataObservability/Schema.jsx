@@ -64,11 +64,46 @@ export default function Schema() {
     return map;
   }, [schemaData]);
 
-  const schemasMonitored = kpiMap.schemas_monitored?.value ?? 2;
+  const schemasMonitored = kpiMap.schemas_monitored?.value ?? (schemaData?.items?.length ?? 0);
   const schemaChanges = kpiMap.schema_changes?.value ?? 0;
   const breakingChanges = kpiMap.breaking_changes?.value ?? 0;
-  const compatibility = kpiMap.compatibility?.value ?? 100;
+  const compatibility = kpiMap.compatibility?.value ?? null;
   const driftEvents = schemaData?.items || [];
+  const monitoredSchemas = useMemo(() => {
+    const fromApi = schemaData?.schemas || schemaData?.monitored || schemaData?.charts?.schemas;
+    if (Array.isArray(fromApi) && fromApi.length) return fromApi;
+    // Derive unique schemas from drift items / pipelines when dedicated list missing
+    const derived = [];
+    const seen = new Set();
+    for (const p of pipelines) {
+      const key = `${p.source || ''}|${p.target || ''}|${p.pipeline_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      derived.push({
+        schema: p.source_schema || p.source || '—',
+        database: p.database || p.database_name || '—',
+        table: p.source_dataset || p.source_table || p.source || '—',
+        status: p.status || '—',
+        drift: 0,
+        compatibility: compatibility != null ? `${compatibility}%` : '—',
+        last_validation: p.last_run_at || '—',
+        role: 'source',
+      });
+      if (p.target || p.target_schema) {
+        derived.push({
+          schema: p.target_schema || p.target || '—',
+          database: p.database || p.database_name || '—',
+          table: p.target_dataset || p.target_table || p.target || '—',
+          status: p.status || '—',
+          drift: 0,
+          compatibility: compatibility != null ? `${compatibility}%` : '—',
+          last_validation: p.last_run_at || '—',
+          role: 'target',
+        });
+      }
+    }
+    return derived;
+  }, [schemaData, pipelines, compatibility]);
 
   return (
     <div className="fade-in">
@@ -89,8 +124,8 @@ export default function Schema() {
               </div>
               <span className="kpi-label">Schema Compatibility</span>
             </div>
-            <div className="kpi-value" style={{ color: '#10B981' }}>
-              {kpiMap.compatibility?.display || `${compatibility}%`}
+            <div className="kpi-value" style={{ color: compatibility == null || compatibility >= 90 ? '#10B981' : '#F59E0B' }}>
+              {kpiMap.compatibility?.display || (compatibility != null ? `${compatibility}%` : '—')}
             </div>
             <div className="kpi-delta up">
               <ArrowUpRight size={13} />
@@ -107,7 +142,7 @@ export default function Schema() {
             </div>
             <div className="kpi-value">{schemasMonitored}</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              RAW_DATA & FINAL_DATA
+              From live schema monitors
             </div>
           </div>
 
@@ -165,34 +200,28 @@ export default function Schema() {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Database size={15} style={{ color: '#38BDF8' }} />
-                      <span style={{ fontWeight: 600 }}>RAW_DATA</span>
-                    </div>
-                  </td>
-                  <td>INVENTORY_ANALYTICS</td>
-                  <td><span className="tag">RAW_INVENTORY</span></td>
-                  <td><span className="status-pill good">Enforced</span></td>
-                  <td style={{ fontWeight: 600 }}>0</td>
-                  <td style={{ color: '#10B981', fontWeight: 600 }}>100%</td>
-                  <td style={{ color: 'var(--text-secondary)' }}>Live Sync Active</td>
-                </tr>
-                <tr>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Database size={15} style={{ color: '#10B981' }} />
-                      <span style={{ fontWeight: 600 }}>FINAL_DATA</span>
-                    </div>
-                  </td>
-                  <td>INVENTORY_ANALYTICS</td>
-                  <td><span className="tag accent">DIM_INVENTORY</span></td>
-                  <td><span className="status-pill good">Enforced</span></td>
-                  <td style={{ fontWeight: 600 }}>0</td>
-                  <td style={{ color: '#10B981', fontWeight: 600 }}>100%</td>
-                  <td style={{ color: 'var(--text-secondary)' }}>Live Sync Active</td>
-                </tr>
+                {monitoredSchemas.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>
+                      No monitored schemas from the API yet.
+                    </td>
+                  </tr>
+                ) : monitoredSchemas.map((row, idx) => (
+                  <tr key={`${row.schema}-${row.table}-${idx}`}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Database size={15} style={{ color: row.role === 'target' ? '#10B981' : '#38BDF8' }} />
+                        <span style={{ fontWeight: 600 }}>{row.schema || row.schema_name || '—'}</span>
+                      </div>
+                    </td>
+                    <td>{row.database || row.database_name || '—'}</td>
+                    <td><span className={`tag ${row.role === 'target' ? 'accent' : ''}`}>{row.table || row.object_name || '—'}</span></td>
+                    <td><span className="status-pill good">{row.status || row.contract_status || 'Monitored'}</span></td>
+                    <td style={{ fontWeight: 600 }}>{row.drift ?? row.drift_events ?? schemaChanges}</td>
+                    <td style={{ color: '#10B981', fontWeight: 600 }}>{row.compatibility || '—'}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{row.last_validation || row.updated_at || '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

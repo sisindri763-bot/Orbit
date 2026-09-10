@@ -14,17 +14,17 @@ export default function Lineage() {
   const [loading, setLoading] = useState(true);
   const [lineageApiData, setLineageApiData] = useState(null);
   const [pipelinesList, setPipelinesList] = useState([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState('3794bea7-75b1-4eba-b0cc-bd253419aafa');
-  const [selectedPipelineName, setSelectedPipelineName] = useState('inventory_etl');
+  const [selectedPipelineId, setSelectedPipelineId] = useState('');
+  const [selectedPipelineName, setSelectedPipelineName] = useState('');
 
   // Dynamic Assets extracted from live API
   const [sourceColumns, setSourceColumns] = useState([]);
   const [targetColumns, setTargetColumns] = useState([]);
-  const [sourceTableName, setSourceTableName] = useState('INVENTORY_ANALYTICS.RAW_DATA.RAW_INVENTORY');
-  const [targetTableName, setTargetTableName] = useState('INVENTORY_ANALYTICS.FINAL_DATA.DIM_INVENTORY');
-  const [sourceRowCount, setSourceRowCount] = useState(208);
-  const [targetRowCount, setTargetRowCount] = useState(65);
-  const [runDuration, setRunDuration] = useState('15s');
+  const [sourceTableName, setSourceTableName] = useState('—');
+  const [targetTableName, setTargetTableName] = useState('—');
+  const [sourceRowCount, setSourceRowCount] = useState(null);
+  const [targetRowCount, setTargetRowCount] = useState(null);
+  const [runDuration, setRunDuration] = useState('—');
 
   // UI state
   const [level, setLevel] = useState('column'); // 'table' | 'column'
@@ -52,9 +52,16 @@ export default function Lineage() {
         const pList = pipeRes.value.items || pipeRes.value.pipelines || (Array.isArray(pipeRes.value) ? pipeRes.value : []);
         setPipelinesList(pList);
         if (pList.length > 0) {
-          activePipeId = pList[0].pipeline_id || activePipeId;
-          setSelectedPipelineId(activePipeId);
-          setSelectedPipelineName(pList[0].pipeline_name || 'inventory_etl');
+          activePipeId = selectedPipelineId || pList[0].pipeline_id || '';
+          const active = pList.find(p => p.pipeline_id === activePipeId) || pList[0];
+          setSelectedPipelineId(active.pipeline_id || '');
+          setSelectedPipelineName(active.pipeline_name || '');
+          if (active.source) setSourceTableName(active.source);
+          if (active.target) setTargetTableName(active.target);
+        } else {
+          activePipeId = '';
+          setSelectedPipelineId('');
+          setSelectedPipelineName('');
         }
       }
 
@@ -64,9 +71,12 @@ export default function Lineage() {
         const runs = runsRes?.items || [];
         if (runs.length > 0) {
           const latestRun = runs[0];
-          setSourceRowCount(latestRun.rows_read || 208);
-          setTargetRowCount(latestRun.rows_written || 65);
-          setRunDuration(latestRun.duration_display || `${latestRun.duration || 15}s`);
+          setSourceRowCount(latestRun.rows_read ?? latestRun.source_rows ?? null);
+          setTargetRowCount(latestRun.rows_written ?? latestRun.target_rows ?? null);
+          setRunDuration(
+            latestRun.duration_display ||
+            (latestRun.duration != null ? `${latestRun.duration}s` : '—')
+          );
 
           // Fetch full run detail to extract live schema columns
           const runDetail = await fetchRunDetail(latestRun.id).catch(() => null);
@@ -95,11 +105,11 @@ export default function Lineage() {
 
             if (srcCols.length > 0) {
               setSourceColumns(srcCols);
-              setSourceTableName(srcCols[0].table || 'INVENTORY_ANALYTICS.RAW_DATA.RAW_INVENTORY');
+              setSourceTableName(srcCols[0].table || sourceTableName);
             }
             if (tgtCols.length > 0) {
               setTargetColumns(tgtCols);
-              setTargetTableName(tgtCols[0].table || 'INVENTORY_ANALYTICS.FINAL_DATA.DIM_INVENTORY');
+              setTargetTableName(tgtCols[0].table || targetTableName);
             }
           }
         }
@@ -115,46 +125,9 @@ export default function Lineage() {
     loadDynamicLineage();
   }, [loadDynamicLineage]);
 
-  // Fallback columns if API is still loading
-  const effectiveSourceCols = useMemo(() => {
-    if (sourceColumns.length > 0) return sourceColumns;
-    return [
-      { name: 'PRODUCT_ID', type: 'NUMBER', pk: true },
-      { name: 'PRODUCT_NAME', type: 'TEXT', pk: false },
-      { name: 'SKU', type: 'TEXT', pk: false },
-      { name: 'CATEGORY', type: 'TEXT', pk: false },
-      { name: 'SUPPLIER', type: 'TEXT', pk: false },
-      { name: 'WAREHOUSE_LOCATION', type: 'TEXT', pk: false },
-      { name: 'UNIT_PRICE', type: 'NUMBER', pk: false },
-      { name: 'CURRENCY', type: 'TEXT', pk: false },
-      { name: 'QUANTITY_IN_STOCK', type: 'NUMBER', pk: false },
-      { name: 'REORDER_LEVEL', type: 'NUMBER', pk: false },
-      { name: 'LAST_RESTOCKED_DATE', type: 'TEXT', pk: false },
-      { name: 'IS_DISCONTINUED', type: 'TEXT', pk: false },
-      { name: 'STATUS', type: 'TEXT', pk: false },
-      { name: 'RATING', type: 'TEXT', pk: false }
-    ];
-  }, [sourceColumns]);
-
-  const effectiveTargetCols = useMemo(() => {
-    if (targetColumns.length > 0) return targetColumns;
-    return [
-      { name: 'PRODUCT_ID', type: 'NUMBER', pk: true },
-      { name: 'PRODUCT_NAME', type: 'TEXT', pk: false },
-      { name: 'SKU', type: 'TEXT', pk: false },
-      { name: 'CATEGORY', type: 'TEXT', pk: false },
-      { name: 'SUPPLIER', type: 'TEXT', pk: false },
-      { name: 'WAREHOUSE_LOCATION', type: 'TEXT', pk: false },
-      { name: 'UNIT_PRICE', type: 'NUMBER', pk: false },
-      { name: 'CURRENCY', type: 'TEXT', pk: false },
-      { name: 'QUANTITY_IN_STOCK', type: 'NUMBER', pk: false },
-      { name: 'REORDER_LEVEL', type: 'NUMBER', pk: false },
-      { name: 'LAST_RESTOCKED_DATE', type: 'DATE', pk: false },
-      { name: 'IS_DISCONTINUED', type: 'BOOLEAN', pk: false },
-      { name: 'STATUS', type: 'TEXT', pk: false },
-      { name: 'RATING', type: 'NUMBER', pk: false }
-    ];
-  }, [targetColumns]);
+  // Columns only from API — no demo schema
+  const effectiveSourceCols = useMemo(() => sourceColumns, [sourceColumns]);
+  const effectiveTargetCols = useMemo(() => targetColumns, [targetColumns]);
 
   // Search filtered lists
   const filteredSourceCols = useMemo(() => {
@@ -216,7 +189,7 @@ export default function Lineage() {
                     </option>
                   ))
                 ) : (
-                  <option value="3794bea7-75b1-4eba-b0cc-bd253419aafa">inventory_etl</option>
+                  <option value="">No pipelines from API</option>
                 )}
               </select>
             </div>
@@ -460,12 +433,12 @@ export default function Lineage() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: '#0F172A' }}>
                       <span>🟧</span>
-                      <span>dbt-inventory-job</span>
+                      <span>{selectedPipelineName || 'ETL job'}</span>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                       <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4 }}>
-                        ● 20/20 Tests Passed
+                        ● Live pipeline
                       </span>
                       <span style={{ fontSize: 10.5, color: '#64748B', display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Clock size={11} /> {runDuration}
@@ -473,34 +446,37 @@ export default function Lineage() {
                     </div>
 
                     <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 6 }}>
-                      📁 inventory_analytics
+                      {sourceTableName !== '—' ? `Source: ${sourceTableName}` : 'Awaiting lineage assets'}
                     </div>
                   </div>
 
-                  {/* Transformation Stages */}
+                  {/* Transformation Stages — only when API provides run steps */}
                   <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {[
-                      { name: 'stg_inventory.sql', dur: '1.2s' },
-                      { name: 'int_inventory_metrics.sql', dur: '2.8s' },
-                      { name: 'dim_inventory.sql', dur: '4.1s' },
-                      { name: '20 dbt Data Tests', dur: '4.6s' },
-                      { name: 'Snowflake Mart Load', dur: '1.0s' },
-                      { name: 'Catalog Schema Sync', dur: '0.8s' },
-                    ].map((stg) => (
-                      <div
-                        key={stg.name}
-                        style={{
-                          height: 26, fontSize: 10.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          color: '#334155', fontWeight: 500
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981' }} />
-                          <span style={{ fontFamily: 'monospace' }}>{stg.name}</span>
-                        </div>
-                        <span style={{ color: '#059669', fontWeight: 600 }}>{stg.dur}</span>
+                    {(lineageApiData?.items?.find(i => i.pipeline_id === selectedPipelineId)?.stages
+                      || lineageApiData?.stages
+                      || []).length === 0 ? (
+                      <div style={{ fontSize: 11, color: '#64748B' }}>
+                        No transform stages in API response. Sync a run to populate lineage hops.
                       </div>
-                    ))}
+                    ) : (
+                      (lineageApiData?.items?.find(i => i.pipeline_id === selectedPipelineId)?.stages
+                        || lineageApiData?.stages
+                        || []).map((stg) => (
+                        <div
+                          key={stg.name || stg.id}
+                          style={{
+                            height: 26, fontSize: 10.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            color: '#334155', fontWeight: 500
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10B981' }} />
+                            <span style={{ fontFamily: 'monospace' }}>{stg.name || stg.step || stg.id}</span>
+                          </div>
+                          <span style={{ color: '#059669', fontWeight: 600 }}>{stg.dur || stg.duration || ''}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -582,12 +558,12 @@ export default function Lineage() {
                     cursor: 'pointer'
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>RAW_INVENTORY</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>{sourceTableName}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#2563EB' }}>
-                    <span>❄️ Snowflake</span>
+                    <span>❄️ Source</span>
                   </div>
-                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>RAW_DATA</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#0F172A', marginTop: 2 }}>{sourceRowCount} rows</div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{selectedPipelineName || '—'}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#0F172A', marginTop: 2 }}>{sourceRowCount != null ? `${sourceRowCount} rows` : '— rows'}</div>
                 </div>
 
                 <div style={{ color: '#94A3B8' }}><ArrowRight size={24} /></div>
@@ -659,7 +635,7 @@ export default function Lineage() {
               }}>
                 <Table size={15} color="#047857" />
                 <span style={{ fontWeight: 700, fontSize: 13, color: '#047857' }}>
-                  {selectedNode === 'source' ? 'RAW_INVENTORY' : selectedNode === 'dbt' ? 'dbt-inventory-job' : 'DIM_INVENTORY'}
+                  {selectedNode === 'source' ? sourceTableName : selectedNode === 'dbt' ? (selectedPipelineName || 'ETL') : targetTableName}
                 </span>
               </div>
 

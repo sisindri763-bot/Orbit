@@ -82,26 +82,8 @@ export default function Metrics() {
 
   // Raw Pipeline Items directly from API
   const rawPipelineItems = useMemo(() => {
-    const list = metricsData?.items || metricsData?.charts?.top_by_duration || [];
-    if (list.length > 0) return list;
-    return [
-      {
-        pipeline_id: '3794bea7-75b1-4eba-b0cc-bd253419aafa',
-        pipeline_name: 'inventory_etl',
-        tool: 'dbt Cloud',
-        status: 'Degraded',
-        status_key: 'degraded',
-        last_run_at: '2026-09-02 08:09:34',
-        last_run_age: '35h ago',
-        duration: '15s',
-        avg_duration_seconds: 15,
-        success_rate_pct: 100,
-        avg_freshness_hours: 42.5,
-        avg_freshness_display: '42.5h',
-        runs: 1
-      }
-    ];
-  }, [metricsData]);
+    return metricsData?.items || metricsData?.charts?.top_by_duration || pipelines || [];
+  }, [metricsData, pipelines]);
 
   // Apply Global Filters across entire page
   const filteredPipelines = useMemo(() => {
@@ -130,46 +112,71 @@ export default function Metrics() {
       };
     }
 
-    const sumDuration = filteredPipelines.reduce((acc, p) => acc + (Number(p.avg_duration_seconds) || 15), 0);
-    const sumRuns = filteredPipelines.reduce((acc, p) => acc + (Number(p.runs) || 1), 0);
-    const sumSuccess = filteredPipelines.reduce((acc, p) => acc + (p.success_rate_pct === 100 ? (p.runs || 1) : 0), 0);
-    const sumFreshness = filteredPipelines.reduce((acc, p) => acc + (Number(p.avg_freshness_hours) || 42.5), 0);
+    const sumDuration = filteredPipelines.reduce((acc, p) => acc + (Number(p.avg_duration_seconds) || 0), 0);
+    const sumRuns = filteredPipelines.reduce((acc, p) => acc + (Number(p.runs) || 0), 0);
+    const sumSuccess = filteredPipelines.reduce((acc, p) => {
+      const rate = Number(p.success_rate_pct);
+      const runs = Number(p.runs) || 0;
+      if (Number.isFinite(rate) && runs) return acc + (rate / 100) * runs;
+      return acc;
+    }, 0);
+    const freshnessVals = filteredPipelines
+      .map(p => Number(p.avg_freshness_hours))
+      .filter(n => Number.isFinite(n));
+    const sumFreshness = freshnessVals.reduce((acc, n) => acc + n, 0);
 
     return {
-      successRate: `${((sumSuccess / (sumRuns || 1)) * 100).toFixed(1)}%`,
-      avgDuration: `${(sumDuration / total).toFixed(0)}s`,
+      successRate: sumRuns ? `${((sumSuccess / sumRuns) * 100).toFixed(1)}%` : '—',
+      avgDuration: total && sumDuration ? `${(sumDuration / total).toFixed(0)}s` : '—',
       totalRuns: sumRuns,
-      failedRuns: sumRuns - sumSuccess,
-      avgFreshness: `${(sumFreshness / total).toFixed(1)}h`,
+      failedRuns: Math.max(0, Math.round(sumRuns - sumSuccess)),
+      avgFreshness: freshnessVals.length ? `${(sumFreshness / freshnessVals.length).toFixed(1)}h` : '—',
     };
   }, [filteredPipelines]);
 
-  // Latency Trend Chart Series
+  // Latency Trend Chart Series — prefer API series, else empty
   const timeSeriesData = useMemo(() => {
-    const baseDuration = Number(dynamicKPIs.avgDuration.replace('s', '')) || 15;
-    return [
-      { time: 'Aug 29', duration: baseDuration - 0.4 },
-      { time: 'Aug 30', duration: baseDuration - 0.1 },
-      { time: 'Aug 31', duration: baseDuration + 0.9 },
-      { time: 'Sep 01', duration: baseDuration - 0.3 },
-      { time: 'Sep 02 (Run)', duration: baseDuration },
-      { time: 'Sep 03', duration: baseDuration },
-    ];
-  }, [dynamicKPIs.avgDuration]);
+    const apiSeries =
+      chartsData?.series?.duration_over_time ||
+      metricsData?.series?.duration_over_time ||
+      chartsData?.charts?.duration_over_time ||
+      [];
+    if (Array.isArray(apiSeries) && apiSeries.length > 0) {
+      return apiSeries.map((d) => ({
+        time: d.time || d.label || d.date || d.day,
+        duration: Number(d.duration ?? d.value ?? d.avg_duration_seconds) || 0,
+      }));
+    }
+    return [];
+  }, [chartsData, metricsData]);
 
-  // Donut Chart Data (Guaranteed rendering)
+  // Donut Chart Data from live totals
   const statusChartData = useMemo(() => {
-    const successCount = dynamicKPIs.totalRuns - dynamicKPIs.failedRuns;
+    const successCount = Math.max(0, dynamicKPIs.totalRuns - dynamicKPIs.failedRuns);
     const failedCount = dynamicKPIs.failedRuns;
-    const total = dynamicKPIs.totalRuns || 1;
+    const total = dynamicKPIs.totalRuns || 0;
+    if (!total) {
+      return [
+        { name: 'Success', value: 0, color: '#10B981', pct: '—' },
+        { name: 'Failed', value: 0, color: '#EF4444', pct: '—' },
+        { name: 'Running', value: 0, color: '#F59E0B', pct: '—' },
+        { name: 'Cancelled', value: 0, color: '#94A3B8', pct: '—' },
+      ];
+    }
 
     return [
-      { name: 'Success', value: successCount > 0 ? successCount : 1, color: '#10B981', pct: `${Math.round(((successCount || 1) / total) * 100)}%` },
+      { name: 'Success', value: successCount, color: '#10B981', pct: `${Math.round((successCount / total) * 100)}%` },
       { name: 'Failed', value: failedCount, color: '#EF4444', pct: `${Math.round((failedCount / total) * 100)}%` },
       { name: 'Running', value: 0, color: '#F59E0B', pct: '0%' },
       { name: 'Cancelled', value: 0, color: '#94A3B8', pct: '0%' },
     ];
   }, [dynamicKPIs]);
+
+  const dqSummary = useMemo(() => {
+    const dims = metricsData?.summary?.by_dimension || metricsData?.charts?.by_dimension || null;
+    const freshness = dynamicKPIs.avgFreshness;
+    return { dims, freshness };
+  }, [metricsData, dynamicKPIs.avgFreshness]);
 
   return (
     <div className="fade-in">
@@ -415,52 +422,48 @@ export default function Metrics() {
           </div>
         </div>
 
-        {/* 25 Data Quality Assertions Summary Cards */}
+        {/* Data Quality Assertions — from API when available */}
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="card-header">
             <div>
-              <span className="card-title">Data Quality Assertions Summary (25 Checks Active)</span>
-              <span className="card-subtitle">Evaluated dimensions across validity, completeness, uniqueness, and freshness</span>
+              <span className="card-title">Data Quality Assertions Summary</span>
+              <span className="card-subtitle">Dimensions from live metrics / quality evaluation</span>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, padding: 4 }}>
-            <div style={{ padding: 14, borderRadius: 8, background: 'var(--bg-card-subtle)', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>COMPLETENESS (NOT NULL)</span>
-                <span style={{ fontSize: 10, fontWeight: 700, background: '#ECFDF5', color: '#047857', padding: '2px 6px', borderRadius: 4 }}>14 / 14 PASS</span>
+          {dqSummary.dims ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, padding: 4 }}>
+              {Object.entries(dqSummary.dims).map(([key, val]) => {
+                const passed = val?.passed ?? 0;
+                const warn = val?.warn ?? 0;
+                const failed = val?.failed ?? 0;
+                const total = passed + warn + failed;
+                const pct = total ? ((passed / total) * 100).toFixed(1) : '—';
+                return (
+                  <div key={key} style={{ padding: 14, borderRadius: 8, background: 'var(--bg-card-subtle)', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>{key.toUpperCase()}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, background: '#ECFDF5', color: '#047857', padding: '2px 6px', borderRadius: 4 }}>
+                        {passed} / {total || 0} PASS
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#10B981', marginTop: 4 }}>{pct}{pct !== '—' ? '%' : ''}</div>
+                  </div>
+                );
+              })}
+              <div style={{ padding: 14, borderRadius: 8, background: 'var(--bg-card-subtle)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>FRESHNESS</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#F59E0B', marginTop: 4 }}>{dqSummary.freshness}</div>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#10B981', marginTop: 4 }}>100.0%</div>
-              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>0 missing values in required fields</div>
             </div>
-
-            <div style={{ padding: 14, borderRadius: 8, background: 'var(--bg-card-subtle)', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>UNIQUENESS (PRIMARY KEY)</span>
-                <span style={{ fontSize: 10, fontWeight: 700, background: '#ECFDF5', color: '#047857', padding: '2px 6px', borderRadius: 4 }}>6 / 6 PASS</span>
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#10B981', marginTop: 4 }}>100.0%</div>
-              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>0 duplicate records detected</div>
+          ) : (
+            <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              No quality assertion breakdown from the API for this filter window.
+              {dqSummary.freshness !== '—' && (
+                <div style={{ marginTop: 8 }}>Avg freshness: <strong>{dqSummary.freshness}</strong></div>
+              )}
             </div>
-
-            <div style={{ padding: 14, borderRadius: 8, background: 'var(--bg-card-subtle)', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>VALIDITY (ACCEPTED VALUES)</span>
-                <span style={{ fontSize: 10, fontWeight: 700, background: '#ECFDF5', color: '#047857', padding: '2px 6px', borderRadius: 4 }}>4 / 4 PASS</span>
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#10B981', marginTop: 4 }}>100.0%</div>
-              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>All currency & warehouse codes valid</div>
-            </div>
-
-            <div style={{ padding: 14, borderRadius: 8, background: 'var(--bg-card-subtle)', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)' }}>FRESHNESS SLA</span>
-                <span style={{ fontSize: 10, fontWeight: 700, background: '#FEF3C7', color: '#B45309', padding: '2px 6px', borderRadius: 4 }}>1 NOTICE</span>
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#F59E0B', marginTop: 4 }}>42.5h</div>
-              <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>Target sync SLA is &lt; 24h</div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* ── 4. MONITORED PIPELINES TABLE (AT THE BOTTOM) ────────────────────── */}
@@ -510,48 +513,53 @@ export default function Metrics() {
                               {p.pipeline_name}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                              Engine: {p.tool ? p.tool.toUpperCase() : 'DBT'} &bull; Snowflake (INVENTORY_WH)
+                              Engine: {(p.tool || p.etl_tool || '—').toString().toUpperCase()}
+                              {p.warehouse || p.target_schema ? ` • ${p.warehouse || p.target_schema}` : ''}
                             </div>
                           </div>
                         </div>
                       </td>
 
                       <td>
-                        <span className={`status-pill ${p.status_key === 'healthy' ? 'good' : 'warning'}`}>
-                          {p.status || 'Degraded'}
+                        <span className={`status-pill ${p.status_key === 'healthy' || p.status_key === 'success' ? 'good' : 'warning'}`}>
+                          {p.status || p.status_key || '—'}
                         </span>
                       </td>
 
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <strong style={{ color: '#10B981', fontSize: 12 }}>{p.success_rate_pct}%</strong>
-                          <div style={{ width: 50, height: 5, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
-                            <div style={{ width: `${p.success_rate_pct}%`, height: '100%', background: '#10B981' }} />
-                          </div>
+                          <strong style={{ color: '#10B981', fontSize: 12 }}>
+                            {p.success_rate_pct != null ? `${p.success_rate_pct}%` : (p.success_rate || '—')}
+                          </strong>
+                          {p.success_rate_pct != null && (
+                            <div style={{ width: 50, height: 5, background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
+                              <div style={{ width: `${p.success_rate_pct}%`, height: '100%', background: '#10B981' }} />
+                            </div>
+                          )}
                         </div>
                       </td>
 
                       <td style={{ fontWeight: 600, fontSize: 12 }}>
-                        {p.duration || `${p.avg_duration_seconds}s`}
+                        {p.duration || (p.avg_duration_seconds != null ? `${p.avg_duration_seconds}s` : '—')}
                       </td>
 
                       <td style={{ fontSize: 12, fontWeight: 600 }}>
-                        {p.runs || 1}
+                        {p.runs != null ? p.runs : '—'}
                       </td>
 
                       <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                        <div>{p.last_run_age || '35h ago'}</div>
-                        <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{p.last_run_at || 'Sep 2, 08:09 UTC'}</div>
+                        <div>{p.last_run_age || '—'}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{p.last_run_at || '—'}</div>
                       </td>
 
                       <td>
                         <span style={{ fontSize: 12, fontWeight: 600, color: '#F59E0B' }}>
-                          {p.avg_freshness_display || `${p.avg_freshness_hours}h`}
+                          {p.avg_freshness_display || (p.avg_freshness_hours != null ? `${p.avg_freshness_hours}h` : '—')}
                         </span>
                       </td>
 
                       <td style={{ textAlign: 'right', fontSize: 11.5, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                        INVENTORY_ANALYTICS.FINAL_DATA.DIM_INVENTORY
+                        {p.target || p.target_dataset || p.target_table || '—'}
                       </td>
                     </tr>
                   ))

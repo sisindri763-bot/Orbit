@@ -116,14 +116,7 @@ export default function Volume() {
     if (charts?.by_pipeline && Array.isArray(charts.by_pipeline) && charts.by_pipeline.length > 0) {
       return charts.by_pipeline;
     }
-    return [
-      { time: 'Aug 29', rows: 65 },
-      { time: 'Aug 30', rows: 65 },
-      { time: 'Aug 31', rows: 65 },
-      { time: 'Sep 01', rows: 65 },
-      { time: 'Sep 02', rows: 65 },
-      { time: 'Sep 03', rows: 65 }
-    ];
+    return [];
   }, [series, charts]);
 
   // Filtered dataset
@@ -307,16 +300,18 @@ export default function Volume() {
                         </div>
                       </td>
                       <td>
-                        <span className="tag">RAW_DATA.RAW_INVENTORY</span>
+                        <span className="tag">{pipe.source || pipe.source_dataset || '—'}</span>
                       </td>
                       <td>
-                        <span className="tag accent">FINAL_DATA.DIM_INVENTORY</span>
+                        <span className="tag accent">{pipe.target || pipe.target_dataset || '—'}</span>
                       </td>
                       <td style={{ fontWeight: 600, color: '#3B82F6' }}>
-                        65 rows
+                        {pipe.target_rows != null ? `${pipe.target_rows} rows` : (pipe.rows != null ? `${pipe.rows} rows` : '—')}
                       </td>
                       <td>
-                        <span className="status-pill good">Healthy (0% drop)</span>
+                        <span className={`status-pill ${pipe.status_key === 'healthy' || pipe.status_key === 'success' ? 'good' : 'warning'}`}>
+                          {pipe.status || pipe.status_key || '—'}
+                        </span>
                       </td>
                       <td style={{ color: 'var(--text-secondary)' }}>
                         {pipe.last_run_age || pipe.last_run || 'recently'}

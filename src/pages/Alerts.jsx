@@ -4,15 +4,8 @@ import PageHeader from '../components/PageHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { fetchAlerts } from '../api/client';
 
-const DEFAULT_ALERTS = [
-  { id: 1, name: 'SLA Breach Alert', channel: '#data-eng-alerts (Slack)', condition: 'Pipeline freshness lag > 60 min', active: true },
-  { id: 2, name: 'Critical Volume Drop', channel: 'PagerDuty', condition: 'Row count drops > 50% vs 7-day average', active: true },
-  { id: 3, name: 'Schema Breaking Change', channel: '#data-governance (Slack)', condition: 'Columns dropped or data types altered', active: true },
-  { id: 4, name: 'Data Quality Failure', channel: 'email: datateam@vithi.dev', condition: 'Quality check failure rate > 5%', active: false },
-];
-
 export default function Alerts() {
-  const [alerts, setAlerts] = useState(DEFAULT_ALERTS);
+  const [alerts, setAlerts] = useState([]);
   const [liveKpis, setLiveKpis] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -25,11 +18,10 @@ export default function Alerts() {
     try {
       const res = await fetchAlerts();
       if (res && res.kpis) setLiveKpis(res.kpis);
-      if (res && res.items && res.items.length > 0) {
-        setAlerts(res.items);
-      }
+      setAlerts(Array.isArray(res?.items) ? res.items : []);
     } catch (e) {
       console.error('Failed to load alerts:', e);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
@@ -59,7 +51,25 @@ export default function Alerts() {
     setShowAddModal(false);
   };
 
-  const activeCount = alerts.filter(a => a.active).length;
+  const activeCount = alerts.filter(a => a.active ?? a.is_enabled ?? a.status === 'active').length;
+  const kpiMap = useMemo(() => {
+    const map = {};
+    (liveKpis || []).forEach(k => { if (k?.id) map[k.id] = k; });
+    return map;
+  }, [liveKpis]);
+  const channels = useMemo(() => {
+    const set = new Set(alerts.map(a => a.channel || a.notification_channel).filter(Boolean));
+    return set.size;
+  }, [alerts]);
+
+  if (loading && alerts.length === 0) {
+    return (
+      <div className="fade-in">
+        <PageHeader title="Alerts" subtitle="Configure and manage pipeline health alerts." onRefresh={loadData} />
+        <div className="page-body"><LoadingSpinner /></div>
+      </div>
+    );
+  }
 
   return (
     <div className="fade-in">
@@ -73,23 +83,31 @@ export default function Alerts() {
         <div className="kpi-grid-4">
           <div className="kpi-card">
             <div className="kpi-label">Configured Rules</div>
-            <div className="kpi-value" style={{ color: '#6366F1', marginTop: 4 }}>{alerts.length}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Active across platform</div>
+            <div className="kpi-value" style={{ color: '#6366F1', marginTop: 4 }}>
+              {kpiMap.configured?.display ?? kpiMap.total?.display ?? alerts.length}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>From API</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-label">Active Monitors</div>
-            <div className="kpi-value" style={{ color: '#10B981', marginTop: 4 }}>{activeCount}</div>
+            <div className="kpi-value" style={{ color: '#10B981', marginTop: 4 }}>
+              {kpiMap.active?.display ?? activeCount}
+            </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Live triggering enabled</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-label">Alerts Fired (24h)</div>
-            <div className="kpi-value" style={{ color: '#10B981', marginTop: 4 }}>0</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Sent to Slack & PagerDuty</div>
+            <div className="kpi-value" style={{ color: '#10B981', marginTop: 4 }}>
+              {kpiMap.fired_24h?.display ?? kpiMap.fired?.display ?? '—'}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>From API</div>
           </div>
           <div className="kpi-card">
             <div className="kpi-label">Connected Channels</div>
-            <div className="kpi-value" style={{ color: '#3B82F6', marginTop: 4 }}>3</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Slack, PagerDuty, Email</div>
+            <div className="kpi-value" style={{ color: '#3B82F6', marginTop: 4 }}>
+              {kpiMap.channels?.display ?? channels}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Derived from alert rules</div>
           </div>
         </div>
 
@@ -116,20 +134,26 @@ export default function Alerts() {
                 </tr>
               </thead>
               <tbody>
-                {alerts.map(a => (
-                  <tr key={a.id}>
-                    <td style={{ fontWeight: 600 }}>{a.name}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{a.condition}</td>
-                    <td style={{ fontWeight: 500, color: '#6366F1' }}>{a.channel}</td>
+                {alerts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>
+                      No alert rules from the API yet.
+                    </td>
+                  </tr>
+                ) : alerts.map(a => (
+                  <tr key={a.id || a.alert_id || a.name}>
+                    <td style={{ fontWeight: 600 }}>{a.name || a.alert_name || '—'}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{a.condition || a.rule || '—'}</td>
+                    <td style={{ fontWeight: 500, color: '#6366F1' }}>{a.channel || a.notification_channel || '—'}</td>
                     <td>
-                      <span className={`status-pill ${a.active ? 'good' : 'warning'}`}>
-                        {a.active ? 'Active' : 'Muted'}
+                      <span className={`status-pill ${(a.active ?? a.is_enabled) ? 'good' : 'warning'}`}>
+                        {(a.active ?? a.is_enabled) ? 'Active' : 'Muted'}
                       </span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div
-                        className={`toggle-switch ${a.active ? 'on' : ''}`}
-                        onClick={() => toggleAlert(a.id)}
+                        className={`toggle-switch ${(a.active ?? a.is_enabled) ? 'on' : ''}`}
+                        onClick={() => toggleAlert(a.id || a.alert_id)}
                         style={{ display: 'inline-block', cursor: 'pointer' }}
                       />
                     </td>
