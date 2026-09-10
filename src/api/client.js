@@ -16,7 +16,7 @@ export const getBaseUrl = () => {
       return '';
     }
   }
-  return import.meta.env.VITE_API_BASE_URL || 'http://40.192.71.150:8002';
+  return import.meta.env.VITE_API_BASE_URL || '';
 };
 
 const api = axios.create({
