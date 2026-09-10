@@ -2,19 +2,19 @@
   "rewrites": [
     {
       "source": "/api/v1/:path*",
-      "destination": "http://18.61.83.1:8002/api/v1/:path*"
+      "destination": "/api/bridge/api/v1/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "http://18.61.83.1:8002/api/v1/:path*"
+      "destination": "/api/bridge/api/v1/:path*"
     },
     {
       "source": "/v1/:path*",
-      "destination": "http://18.61.83.1:8002/v1/:path*"
+      "destination": "/api/bridge/v1/:path*"
     },
     {
       "source": "/health",
-      "destination": "http://18.61.83.1:8002/health"
+      "destination": "/api/bridge/health"
     },
     {
       "source": "/(.*)",
