@@ -1,12 +1,17 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Layout, Plus, Minus, Search, Filter, Database, CheckCircle, AlertTriangle, Layers, ArrowUpRight, Shield } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Layers, Search, Layout, Info } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
 import PageHeader from '../../components/PageHeader';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { fetchSchema, fetchPipelines } from '../../api/client';
+import { fetchSchema } from '../../api/client';
+import {
+  dash, kpiMapFrom, buildDateParams, handleDateChange, TOOLTIP_STYLE,
+} from './obsUtils';
 
 export default function Schema() {
   const [schemaData, setSchemaData] = useState(null);
-  const [pipelines, setPipelines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [headerDatePreset, setHeaderDatePreset] = useState('all');
@@ -15,266 +20,213 @@ export default function Schema() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
-      if (headerDatePreset && headerDatePreset !== 'all' && headerDatePreset !== 'custom') {
-        params.preset = headerDatePreset;
-      }
-      if (headerDatePreset === 'custom' && customDateRange) {
-        params.start_date = customDateRange.start;
-        params.end_date = customDateRange.end;
-      }
-
-      const [sRes, pRes] = await Promise.allSettled([
-        fetchSchema(params),
-        fetchPipelines()
-      ]);
-
-      if (sRes.status === 'fulfilled' && sRes.value) {
-        setSchemaData(sRes.value);
-      }
-      if (pRes.status === 'fulfilled' && pRes.value) {
-        setPipelines(pRes.value.items || pRes.value.pipelines || (Array.isArray(pRes.value) ? pRes.value : []));
-      }
+      const params = buildDateParams(headerDatePreset, customDateRange);
+      setSchemaData(await fetchSchema(params));
     } catch (e) {
-      console.error('Failed to load schema drift:', e);
+      console.error(e);
     } finally {
       setLoading(false);
     }
   }, [headerDatePreset, customDateRange]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const handleHeaderDateChange = (val) => {
-    if (typeof val === 'string') {
-      setHeaderDatePreset(val);
-      setCustomDateRange(null);
-    } else if (val && val.start && val.end) {
-      setHeaderDatePreset('custom');
-      setCustomDateRange(val);
-    }
-  };
+  const kpi = useMemo(() => kpiMapFrom(schemaData?.kpis), [schemaData]);
+  const changes = Number(kpi.schema_changes?.value ?? schemaData?.summary?.changes ?? 0);
+  const breaking = Number(kpi.breaking_changes?.value ?? schemaData?.summary?.breaking ?? 0);
+  const events = schemaData?.items || [];
+  const meta = schemaData?.meta;
 
-  const kpiMap = useMemo(() => {
-    const map = {};
-    if (schemaData?.kpis && Array.isArray(schemaData.kpis)) {
-      schemaData.kpis.forEach(k => { map[k.id] = k; });
+  const impactChart = useMemo(() => {
+    const rows = schemaData?.charts?.by_impact;
+    if (Array.isArray(rows) && rows.length) {
+      return rows.map(r => ({
+        name: String(r.impact || 'other').replace(/_/g, ' '),
+        count: r.count ?? 0,
+      }));
     }
-    return map;
-  }, [schemaData]);
+    return [
+      { name: 'non breaking', count: Math.max(0, changes - breaking) },
+      { name: 'breaking', count: breaking },
+    ];
+  }, [schemaData, changes, breaking]);
 
-  const schemasMonitored = kpiMap.schemas_monitored?.value ?? (schemaData?.items?.length ?? 0);
-  const schemaChanges = kpiMap.schema_changes?.value ?? 0;
-  const breakingChanges = kpiMap.breaking_changes?.value ?? 0;
-  const compatibility = kpiMap.compatibility?.value ?? null;
-  const driftEvents = schemaData?.items || [];
-  const monitoredSchemas = useMemo(() => {
-    const fromApi = schemaData?.schemas || schemaData?.monitored || schemaData?.charts?.schemas;
-    if (Array.isArray(fromApi) && fromApi.length) return fromApi;
-    // Derive unique schemas from drift items / pipelines when dedicated list missing
-    const derived = [];
-    const seen = new Set();
-    for (const p of pipelines) {
-      const key = `${p.source || ''}|${p.target || ''}|${p.pipeline_id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      derived.push({
-        schema: p.source_schema || p.source || '—',
-        database: p.database || p.database_name || '—',
-        table: p.source_dataset || p.source_table || p.source || '—',
-        status: p.status || '—',
-        drift: 0,
-        compatibility: compatibility != null ? `${compatibility}%` : '—',
-        last_validation: p.last_run_at || '—',
-        role: 'source',
-      });
-      if (p.target || p.target_schema) {
-        derived.push({
-          schema: p.target_schema || p.target || '—',
-          database: p.database || p.database_name || '—',
-          table: p.target_dataset || p.target_table || p.target || '—',
-          status: p.status || '—',
-          drift: 0,
-          compatibility: compatibility != null ? `${compatibility}%` : '—',
-          last_validation: p.last_run_at || '—',
-          role: 'target',
-        });
-      }
-    }
-    return derived;
-  }, [schemaData, pipelines, compatibility]);
+  const filtered = useMemo(() => events.filter((ev) => {
+    if (!search) return true;
+    const hay = [ev.table_name, ev.column_name, ev.change_type, ev.impact].join(' ').toLowerCase();
+    return hay.includes(search.toLowerCase());
+  }), [events, search]);
 
   return (
     <div className="fade-in">
       <PageHeader
         title="Schema"
-        subtitle="Monitor column-level schema drift, type changes, and breaking contracts across pipeline runs."
+        subtitle="Did any columns get added, removed, or change type?"
         onRefresh={loadData}
-        onDateChange={handleHeaderDateChange}
+        onDateChange={(v) => handleDateChange(setHeaderDatePreset, setCustomDateRange, v)}
       />
 
       <div className="page-body">
-        {/* 4 Summary Cards */}
-        <div className="kpi-grid-4">
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <CheckCircle size={18} />
-              </div>
-              <span className="kpi-label">Schema Compatibility</span>
-            </div>
-            <div className="kpi-value" style={{ color: compatibility == null || compatibility >= 90 ? '#10B981' : '#F59E0B' }}>
-              {kpiMap.compatibility?.display || (compatibility != null ? `${compatibility}%` : '—')}
-            </div>
-            <div className="kpi-delta up">
-              <ArrowUpRight size={13} />
-              <span>Zero breaking contract changes</span>
-            </div>
-          </div>
-
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
-                <Layers size={18} />
-              </div>
-              <span className="kpi-label">Schemas Monitored</span>
-            </div>
-            <div className="kpi-value">{schemasMonitored}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              From live schema monitors
-            </div>
-          </div>
-
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#FFFBEB', color: '#F59E0B' }}>
-                <Layout size={18} />
-              </div>
-              <span className="kpi-label">Active Schema Drift</span>
-            </div>
-            <div className="kpi-value" style={{ color: schemaChanges > 0 ? '#F59E0B' : '#10B981' }}>
-              {schemaChanges}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {schemaChanges === 0 ? 'No drift events active' : 'Columns altered'}
-            </div>
-          </div>
-
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#FEF2F2', color: '#EF4444' }}>
+        {loading ? <LoadingSpinner /> : (
+          <>
+            {breaking > 0 ? (
+              <div className="obs-alert is-bad">
                 <AlertTriangle size={18} />
+                <div>
+                  <strong>{breaking} breaking change{breaking === 1 ? '' : 's'}.</strong>
+                  {' '}These can break dashboards or downstream jobs.
+                </div>
               </div>
-              <span className="kpi-label">Breaking Changes</span>
-            </div>
-            <div className="kpi-value" style={{ color: breakingChanges > 0 ? '#EF4444' : '#10B981' }}>
-              {breakingChanges}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {breakingChanges === 0 ? '0 breaking contract changes' : 'Contract violated'}
-            </div>
-          </div>
-        </div>
+            ) : changes > 0 ? (
+              <div className="obs-alert is-warn">
+                <Layout size={18} />
+                <div>
+                  <strong>{changes} schema change{changes === 1 ? '' : 's'} found.</strong>
+                  {' '}Review the history list below.
+                </div>
+              </div>
+            ) : (
+              <div className="obs-alert is-ok">
+                <CheckCircle size={18} />
+                <div>
+                  <strong>No schema changes.</strong>
+                  {' '}Compatibility {dash(kpi.compatibility?.display)} across {dash(kpi.schemas_monitored?.display)} monitored schemas.
+                </div>
+              </div>
+            )}
 
-        {/* Monitored Schemas Contract Table */}
-        <div className="card mt-4">
-          <div className="card-header">
-            <div>
-              <span className="card-title">Monitored Schemas & Column Contracts</span>
-              <span className="card-subtitle">Snowflake and dbt model contracts active</span>
+            <div className="obs-insight">
+              <Info size={15} />
+              <div>
+                <strong>How schema drift is detected</strong>
+                <span>
+                  {meta?.formula
+                    ? 'Compares TARGET columns between the latest two successful runs. Column add = non-breaking; drop or type change = breaking.'
+                    : 'Compares schema between successful pipeline runs.'}
+                  {meta?.available === false ? ' Schema monitoring is marked unavailable by the API.' : ''}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div className="table-wrapper">
-            <table className="vithi-table">
-              <thead>
-                <tr>
-                  <th>Schema / Relation</th>
-                  <th>Database</th>
-                  <th>Tracked Table</th>
-                  <th>Contract Status</th>
-                  <th>Drift Events</th>
-                  <th>Compatibility</th>
-                  <th>Last Validation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {monitoredSchemas.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>
-                      No monitored schemas from the API yet.
-                    </td>
-                  </tr>
-                ) : monitoredSchemas.map((row, idx) => (
-                  <tr key={`${row.schema}-${row.table}-${idx}`}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Database size={15} style={{ color: row.role === 'target' ? '#10B981' : '#38BDF8' }} />
-                        <span style={{ fontWeight: 600 }}>{row.schema || row.schema_name || '—'}</span>
-                      </div>
-                    </td>
-                    <td>{row.database || row.database_name || '—'}</td>
-                    <td><span className={`tag ${row.role === 'target' ? 'accent' : ''}`}>{row.table || row.object_name || '—'}</span></td>
-                    <td><span className="status-pill good">{row.status || row.contract_status || 'Monitored'}</span></td>
-                    <td style={{ fontWeight: 600 }}>{row.drift ?? row.drift_events ?? schemaChanges}</td>
-                    <td style={{ color: '#10B981', fontWeight: 600 }}>{row.compatibility || '—'}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{row.last_validation || row.updated_at || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+            <div className="kpi-grid-4">
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}><CheckCircle size={18} /></div>
+                  <span className="kpi-label">Compatibility</span>
+                </div>
+                <div className="kpi-value" style={{ color: '#10B981' }}>{dash(kpi.compatibility?.display)}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}><Layers size={18} /></div>
+                  <span className="kpi-label">Schemas monitored</span>
+                </div>
+                <div className="kpi-value">{dash(kpi.schemas_monitored?.display)}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#FFFBEB', color: '#F59E0B' }}><Layout size={18} /></div>
+                  <span className="kpi-label">Changes found</span>
+                </div>
+                <div className="kpi-value">{dash(kpi.schema_changes?.display)}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#FEF2F2', color: '#EF4444' }}><AlertTriangle size={18} /></div>
+                  <span className="kpi-label">Breaking changes</span>
+                </div>
+                <div className="kpi-value" style={{ color: breaking ? '#EF4444' : '#10B981' }}>
+                  {dash(kpi.breaking_changes?.display)}
+                </div>
+              </div>
+            </div>
 
-        {/* Active Drift Events List */}
-        <div className="card mt-4">
-          <div className="card-header">
-            <div>
-              <span className="card-title">Schema Drift Events History</span>
-              <span className="card-subtitle">Real-time alerts when columns or data types change</span>
+            <div className="card mt-4">
+              <div className="card-header">
+                <div>
+                  <span className="card-title">Impact breakdown</span>
+                  <span className="card-subtitle">Breaking vs non-breaking from schema charts</span>
+                </div>
+              </div>
+              <div style={{ height: 180 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={impactChart} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip {...TOOLTIP_STYLE} />
+                    <Bar dataKey="count" fill="#6366F1" radius={[4, 4, 0, 0]} name="Events" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
 
-          {driftEvents.length === 0 ? (
-            <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <CheckCircle size={32} style={{ color: '#10B981', margin: '0 auto 12px', display: 'block' }} />
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>Schemas 100% In Sync</div>
-              <div style={{ fontSize: 12 }}>All tables and columns conform to the latest dbt model definitions.</div>
+            <div className="card mt-4">
+              <div className="card-header">
+                <div>
+                  <span className="card-title">Change history</span>
+                  <span className="card-subtitle">Column / type changes for this time range</span>
+                </div>
+              </div>
+
+              {events.length > 0 && (
+                <div className="filters-bar" style={{ border: 'none', background: 'transparent', padding: '0 0 12px' }}>
+                  <div className="search-box">
+                    <Search size={14} />
+                    <input
+                      placeholder="Search table or column…"
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {filtered.length === 0 ? (
+                <div className="obs-simple-empty" style={{ padding: '40px 16px' }}>
+                  <CheckCircle size={28} style={{ color: '#10B981', marginBottom: 10 }} />
+                  <div style={{ fontWeight: 650, color: 'var(--text-primary)', marginBottom: 4 }}>
+                    {events.length === 0 ? 'Nothing changed' : 'No matches'}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 440, margin: '0 auto' }}>
+                    {events.length === 0
+                      ? 'When a column is added, removed, or changes type between successful runs, it will appear here.'
+                      : 'Try a different search.'}
+                  </div>
+                </div>
+              ) : (
+                <div className="table-wrapper">
+                  <table className="vithi-table">
+                    <thead>
+                      <tr>
+                        <th>Table</th>
+                        <th>What changed</th>
+                        <th>Column</th>
+                        <th>Impact</th>
+                        <th>When</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((ev, i) => (
+                        <tr key={ev.id || i}>
+                          <td style={{ fontWeight: 600 }}>{dash(ev.table_name)}</td>
+                          <td><span className="tag">{dash(ev.change_type)}</span></td>
+                          <td>{dash(ev.column_name)}</td>
+                          <td>
+                            <span className={`status-pill ${String(ev.impact).toLowerCase() === 'breaking' ? 'critical' : 'warning'}`}>
+                              {dash(ev.impact)}
+                            </span>
+                          </td>
+                          <td>{dash(ev.detected_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="table-wrapper">
-              <table className="vithi-table">
-                <thead>
-                  <tr>
-                    <th>Event ID</th>
-                    <th>Table</th>
-                    <th>Change Type</th>
-                    <th>Column</th>
-                    <th>Impact</th>
-                    <th>Detected At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {driftEvents.map((ev, i) => (
-                    <tr key={i}>
-                      <td style={{ fontFamily: 'monospace' }}>#{ev.id || i + 1}</td>
-                      <td>{ev.table_name}</td>
-                      <td><span className="tag">{ev.change_type}</span></td>
-                      <td>{ev.column_name}</td>
-                      <td>
-                        <span className={`status-pill ${ev.impact === 'breaking' ? 'critical' : 'warning'}`}>
-                          {ev.impact}
-                        </span>
-                      </td>
-                      <td>{ev.detected_at}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

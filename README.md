@@ -250,6 +250,117 @@ One secret/server env; SPA always uses same-origin paths.
 
 ---
 
+# Data Observability — what we need from the API
+
+Frontend screens (`/observability`, Freshness, Volume, Quality, Schema) already consume live endpoints. Below is what is **missing, thin, or unclear** on the backend so those screens can become truly enterprise-grade. UI currently shows `—` / empty states instead of inventing data.
+
+**Endpoints in use today**
+
+| Screen | Primary API |
+|--------|-------------|
+| Hub | `GET /api/v1/overview/health` + pillar endpoints |
+| Freshness | `GET /api/v1/observability/freshness` (+ `POST .../ops/evaluate-monitors`) |
+| Volume | `GET /api/v1/observability/volume` (+ `/v1/monitors`) |
+| Data Quality | `GET /api/v1/observability/quality` (+ `/v1/dq-rules`, evaluate DQ) |
+| Schema | `GET /api/v1/observability/schema` |
+
+---
+
+## A. Freshness — gaps
+
+| Need | Why |
+|------|-----|
+| **Stable pipeline identity in UI** | Two items both named `inventory_etl` with different `pipeline_id`s (one has lag, one `lag=N/A` / no `run_id`). Prefer unique `display_name` or `pipeline_key`, or mark inactive/never-synced explicitly (`status_reason`). |
+| **`series` / lag history** | Freshness returns empty `series` and `charts`. Need lag-over-time (and/or SLA breach history) for trends. |
+| **KPI `delta` / `delta_label`** | All freshness KPI deltas are `null` — no “vs previous window” comparison. |
+| **Reliable `as_of` / `last_updated_at`** | Often `null` on stale rows; hard to explain “when checked”. |
+| **Explicit inactive vs stale** | `N/A` lag + Stale is confusing. Prefer `status_key=never_synced` / `inactive` vs `stale`. |
+| **Filter params parity** | Confirm `pipeline_name`, `status` (fresh/delayed/stale) are supported server-side (UI also filters client-side). |
+
+**Useful extras:** SLA breach count in range; last breach timestamp; link `run_id` when present.
+
+---
+
+## B. Volume — gaps
+
+| Need | Why |
+|------|-----|
+| **Richer `volume_over_time`** | Often **1 point** (e.g. one day). Need daily/hourly points across the selected preset for a real trend chart. |
+| **More pipelines / datasets in `items`** | Frequently **1 item**. Volume UI looks empty without more entities. |
+| **`pct_change` populated** | Item field exists but is often `null`. Needed for spike/drop signal. |
+| **Anomaly / volume-drop events** | Monitors have `volume` + `crit_pct`, but no list of fired anomalies on the volume page payload. Need `anomalies[]` or alerts tied to volume monitors. |
+| **KPI deltas** | All volume KPI deltas `null`. |
+| **Dataset / table grain** | Items are pipeline-level. Table-level row counts (SOURCE vs TARGET) would match Monte Carlo-style volume. |
+
+**Useful extras:** expected baseline + threshold from monitor config on each item; bytes + records in series consistently.
+
+---
+
+## C. Data Quality — gaps (best pillar today)
+
+| Need | Why |
+|------|-----|
+| **Populate relation / column on dbt checks** | Many items have `relation_name`, `column_name`, `dataset_id` = `null` — table is harder to triage. |
+| **Longer `quality_score_over_time`** | Series exists but is short (few dates). Need full preset coverage. |
+| **KPI deltas** | All quality KPI deltas `null`. |
+| **Join DQ rules ↔ check results** | `/v1/dq-rules` exists (e.g. UNIQUE on PRODUCT_ID) but check rows don’t clearly reference `rule_id`. |
+| **Clear severity on monitor warns** | Timeliness warns from freshness monitors show `severity=low`; document semantics. |
+
+**Useful extras:** fail/warn counts by pipeline; last failure age; deep link fields for RCA.
+
+---
+
+## D. Schema — gaps (thinnest pillar)
+
+| Need | Why |
+|------|-----|
+| **Real drift `items[]`** | Currently **0 events** even with 2 schemas monitored. Until runs produce diffs, Schema UI stays empty-state. |
+| **`charts.by_type` filled** | Array is empty; impact chart is all zeros. |
+| **`series` for drift over time** | Empty — need change count over time. |
+| **Monitored schema inventory** | KPI `schemas_monitored=2` but no `schemas[]` / `monitored[]` list (name, database, table, last fingerprint). |
+| **Event payload shape** | When items appear, please include: `pipeline_id`, `table_name`, `column_name`, `change_type` (add/drop/type), `from_type`, `to_type`, `impact` (breaking/non_breaking), `detected_at`, `run_id`. |
+
+**Useful extras:** fingerprint / contract version; who owns the schema.
+
+---
+
+## E. Hub / health — gaps
+
+| Need | Why |
+|------|-----|
+| **`consistency` pillar** | Returned as `available=false` / N/A. Either implement or omit from `pillars` so UI doesn’t show a dead tile. |
+| **Pillar `change` / trend** | `change` is always `null` on health pillars. |
+| **Health + pipeline filter** | Health only accepts date params (documented). If product wants filtered health, API must add `pipeline_name` (etc.). |
+| **Incidents tied to pillars** | Recent incidents often empty; linking `pillar` / `monitor_type` / `pipeline_id` would power hub triage. |
+
+---
+
+## F. Cross-cutting API asks
+
+1. **KPI deltas** — populate `delta` + `delta_label` on all observability KPIs (vs previous period).  
+2. **History density** — series length should match preset (`24h`, `7d`, `30d`, `all`), not a single point.  
+3. **No demo fallbacks** — keep returning honest empties; frontend already uses `—`.  
+4. **Document status enums** — freshness: `fresh|delayed|stale|…`; volume: `healthy|…`; quality: `pass|warn|fail`.  
+5. **Monitor evaluation responses** — `evaluate-monitors` / `evaluate-dq-rules` should return a small result summary the UI can flash after “Re-check”.  
+6. **Pagination** — quality already has many items (29+); server `pagination` + `limit`/`offset` (or cursor) for large estates.  
+7. **Anomalies endpoint (optional)** — e.g. `GET /api/v1/observability/anomalies` for volume/freshness breaches (none exists today).
+
+---
+
+## G. Priority for backend (suggested)
+
+| Priority | Ask | Unlocks |
+|----------|-----|---------|
+| P0 | Schema drift `items` + monitored schema list | Schema page becomes real |
+| P0 | Freshness: inactive vs stale + status reason | Less confusion on duplicate/N/A rows |
+| P1 | Volume series denser + `pct_change` / anomalies | Volume looks “alive” |
+| P1 | Quality: column/relation on checks + rule_id link | Faster triage |
+| P2 | KPI deltas everywhere | Period comparison |
+| P2 | Consistency pillar implement or remove | Cleaner hub |
+| P2 | Evaluate endpoints return summary payload | Better Re-check UX |
+
+---
+
 ## How to add a new observation
 
 Copy this block into this file when you find another API quirk:

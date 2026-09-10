@@ -1,328 +1,912 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Database, FileText, TrendingUp, Activity, Search, Filter,
-  MoreVertical, ArrowUpRight, ArrowDownRight, Calendar, Info,
-  CheckCircle, AlertCircle, X, RotateCcw, GitBranch
+  Database, Activity, Search, GitBranch, TrendingUp, Info, AlertTriangle, CheckCircle,
+  Clock, Share2,
 } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  AreaChart, Area, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import PageHeader from '../../components/PageHeader';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { fetchVolume, fetchPipelines } from '../../api/client';
+import {
+  fetchVolume, fetchMonitors, fetchPipelines, fetchPipelineRuns,
+} from '../../api/client';
+import {
+  dash, kpiMapFrom, statusTone, buildDateParams, handleDateChange,
+  TOOLTIP_STYLE, formatBytes,
+} from './obsUtils';
 
-const TOOLTIP_STYLE = {
-  contentStyle: { background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' },
-  itemStyle: { color: '#0F172A' },
-  labelStyle: { color: '#64748B', fontWeight: 600 },
-};
+const PIPELINE_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#06B6D4', '#EF4444'];
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function fmtBytes(bytes) {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+function dayKey(ts) {
+  if (!ts) return null;
+  const m = String(ts).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+function parseDay(key) {
+  const [y, mo, d] = key.split('-').map(Number);
+  return new Date(y, mo - 1, d);
+}
+
+function formatAxisDay(key) {
+  if (!key) return '';
+  const dt = parseDay(key);
+  return `${MONTHS_SHORT[dt.getMonth()]} ${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function formatTooltipDay(key) {
+  if (!key) return '';
+  const dt = parseDay(key);
+  return `${MONTHS_SHORT[dt.getMonth()]} ${String(dt.getDate()).padStart(2, '0')}, ${dt.getFullYear()}`;
+}
+
+/** Build a continuous daily trend (API often returns 1 point for preset=all). */
+function buildVolumeTrend(series, range) {
+  const byDay = new Map();
+  (series || []).forEach((p) => {
+    const key = dayKey(p.timestamp || p.time);
+    if (!key) return;
+    const bytes = Number(p.bytes ?? 0);
+    byDay.set(key, {
+      records: Number(p.records ?? 0),
+      bytes,
+      size_kb: Math.round((bytes / 1024) * 1000) / 1000,
+      volume_gb: Number(p.volume_gb ?? 0),
+    });
+  });
+
+  let endKey = dayKey(range?.to) || dayKey(new Date().toISOString());
+  let startKey = dayKey(range?.from);
+
+  // "all"/epoch ranges → last 30 days so the chart matches a real trend window
+  if (!startKey || startKey.startsWith('1970')) {
+    const end = parseDay(endKey);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 29);
+    startKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  }
+
+  // Sparse series (1–2 points): still draw a 30-day baseline ending at range.to
+  if (byDay.size > 0 && byDay.size < 5) {
+    const end = parseDay(endKey);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 29);
+    startKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+  }
+
+  const out = [];
+  const cursor = parseDay(startKey);
+  const end = parseDay(endKey);
+  // Safety: cap padded series length
+  let guard = 0;
+  while (cursor <= end && guard < 400) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+    const hit = byDay.get(key);
+    out.push({
+      time: key,
+      label: formatAxisDay(key),
+      records: hit?.records ?? 0,
+      bytes: hit?.bytes ?? 0,
+      size_kb: hit?.size_kb ?? 0,
+      volume_gb: hit?.volume_gb ?? 0,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+    guard += 1;
+  }
+  return out;
+}
+
+function TrendTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload || {};
+  return (
+    <div className="vol-trend-tooltip">
+      <div className="vol-trend-tooltip-title">{formatTooltipDay(row.time)}</div>
+      <div className="vol-trend-tooltip-row">
+        <span className="vol-trend-dot" style={{ background: '#1D4ED8' }} />
+        <span>Records</span>
+        <strong>{row.records ?? 0}</strong>
+      </div>
+      <div className="vol-trend-tooltip-row">
+        <span className="vol-trend-dot" style={{ background: '#10B981' }} />
+        <span>Size (KB)</span>
+        <strong>{formatBytes(row.bytes) || '0 B'}</strong>
+      </div>
+      <div className="vol-trend-tooltip-row">
+        <span className="vol-trend-dot" style={{ background: '#93C5FD' }} />
+        <span>Volume (GB)</span>
+        <strong>{Number(row.volume_gb || 0)} GB</strong>
+      </div>
+    </div>
+  );
+}
+
+function formatStamp(ts) {
+  if (!ts) return null;
+  const s = String(ts);
+  // "2026-09-02 08:09:34" → "Sep 02, 08:09"
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return s;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[Number(m[2]) - 1]} ${m[3]}, ${m[4]}:${m[5]}`;
+}
+
+function shortRunId(id) {
+  if (id == null || id === '') return '—';
+  const s = String(id);
+  if (s.length <= 10) return s;
+  return `${s.slice(0, 8)}…`;
+}
+
+function runStatusPill(status) {
+  const s = String(status || '').toLowerCase();
+  if (['success', 'succeeded', 'passed', 'ok', 'healthy'].includes(s)) return 'good';
+  if (['warning', 'warn', 'degraded'].includes(s)) return 'warning';
+  if (['failed', 'fail', 'error', 'critical'].includes(s)) return 'critical';
+  return 'neutral';
+}
+
+function prettyStatus(status) {
+  if (!status) return '—';
+  const s = String(status);
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function aggregateShares(rows) {
+  const total = rows.reduce((acc, r) => acc + Number(r.bytes || 0), 0);
+  return rows
+    .map((r, i) => {
+      const bytes = Number(r.bytes || 0);
+      const share = total > 0 ? Math.round((bytes / total) * 1000) / 10 : 0;
+      return {
+        name: r.name,
+        bytes,
+        records: Number(r.records || 0),
+        share,
+        color: PIPELINE_COLORS[i % PIPELINE_COLORS.length],
+        bytes_display: formatBytes(bytes) || '0 B',
+      };
+    })
+    .filter(r => r.bytes > 0 || r.records > 0)
+    .sort((a, b) => b.bytes - a.bytes);
 }
 
 export default function Volume() {
+  const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [kpis, setKpis] = useState([]);
-  const [charts, setCharts] = useState(null);
-  const [series, setSeries] = useState(null);
-  const [pipelinesList, setPipelinesList] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [series, setSeries] = useState([]);
+  const [byPipeline, setByPipeline] = useState([]);
+  const [volumeMonitors, setVolumeMonitors] = useState([]);
+  const [pipelineMeta, setPipelineMeta] = useState([]);
+  const [recentRuns, setRecentRuns] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Filters
   const [search, setSearch] = useState('');
-  const [pipelineFilter, setPipelineFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [headerDatePreset, setHeaderDatePreset] = useState('all');
+  const [activityFilter, setActivityFilter] = useState('All');
+  const [pipelineFilter, setPipelineFilter] = useState('All');
+  const [breakTab, setBreakTab] = useState('pipeline');
+  const [headerDatePreset, setHeaderDatePreset] = useState('30d');
   const [customDateRange, setCustomDateRange] = useState(null);
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const [apiRange, setApiRange] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
-      if (headerDatePreset && headerDatePreset !== 'all' && headerDatePreset !== 'custom') {
-        params.preset = headerDatePreset;
-      }
-      if (headerDatePreset === 'custom' && customDateRange) {
-        params.start_date = customDateRange.start;
-        params.end_date = customDateRange.end;
-      }
-      if (pipelineFilter !== 'All') params.pipeline_name = pipelineFilter;
-
-      const [volRes, pRes] = await Promise.allSettled([
+      const params = buildDateParams(headerDatePreset, customDateRange);
+      const [volRes, monRes, pipeRes] = await Promise.allSettled([
         fetchVolume(params),
-        fetchPipelines()
+        fetchMonitors(),
+        fetchPipelines({ preset: 'all' }),
       ]);
 
-      if (volRes.status === 'fulfilled' && volRes.value) {
-        const list = volRes.value.items || volRes.value.volume_checks || (Array.isArray(volRes.value) ? volRes.value : []);
-        setData(list);
-        if (volRes.value.kpis) setKpis(volRes.value.kpis);
-        if (volRes.value.charts) setCharts(volRes.value.charts);
-        if (volRes.value.series) setSeries(volRes.value.series);
+      let volItems = [];
+      if (volRes.status === 'fulfilled') {
+        const res = volRes.value;
+        volItems = res?.items || [];
+        setData(volItems);
+        setKpis(res?.kpis || []);
+        setSummary(res?.summary || null);
+        setSeries(res?.series?.volume_over_time || []);
+        setByPipeline(res?.charts?.by_pipeline || []);
+        setApiRange(res?.range || null);
+      }
+      if (monRes.status === 'fulfilled') {
+        const list = monRes.value?.items || [];
+        setVolumeMonitors(list.filter(m => String(m.monitor_type || '').toLowerCase().includes('volume')));
+      }
+      if (pipeRes.status === 'fulfilled') {
+        setPipelineMeta(pipeRes.value?.items || []);
       }
 
-      if (pRes.status === 'fulfilled' && pRes.value) {
-        const pList = pRes.value.items || pRes.value.pipelines || (Array.isArray(pRes.value) ? pRes.value : []);
-        setPipelinesList(pList);
+      const ids = [...new Set(volItems.map(i => i.pipeline_id).filter(Boolean))];
+      if (ids.length === 0) {
+        setRecentRuns([]);
+      } else {
+        const runLists = await Promise.all(
+          ids.map(id => fetchPipelineRuns(id, params).catch(() => ({ items: [] }))),
+        );
+        const merged = runLists.flatMap(r => r?.items || []);
+        merged.sort((a, b) => String(b.start_time || '').localeCompare(String(a.start_time || '')));
+        setRecentRuns(merged.slice(0, 20));
       }
     } catch (e) {
-      console.error('Failed to load volume data:', e);
+      console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [headerDatePreset, customDateRange, pipelineFilter]);
+  }, [headerDatePreset, customDateRange]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const handleHeaderDateChange = (val) => {
-    if (typeof val === 'string') {
-      setHeaderDatePreset(val);
-      setCustomDateRange(null);
-    } else if (val && val.start && val.end) {
-      setHeaderDatePreset('custom');
-      setCustomDateRange(val);
-    }
-    setPage(1);
-  };
+  const kpi = useMemo(() => kpiMapFrom(kpis), [kpis]);
+  const totalRows = Number(summary?.total_rows ?? kpi.records_received?.value ?? 0);
+  const totalBytes = Number(summary?.total_bytes ?? kpi.data_received?.value ?? 0);
+  const prevRows = summary?.prev_rows;
 
-  // Distinct pipeline names
-  const distinctPipelines = useMemo(() => {
-    const fromData = data.map(d => d.pipeline_name);
-    const fromPipes = pipelinesList.map(p => p.pipeline_name);
-    return Array.from(new Set([...fromData, ...fromPipes].filter(Boolean)));
-  }, [data, pipelinesList]);
-
-  // KPI mapping
-  const kpiMap = useMemo(() => {
+  const metaById = useMemo(() => {
     const map = {};
-    kpis.forEach(k => { map[k.id] = k; });
-    return map;
-  }, [kpis]);
-
-  // Volume Trend chart
-  const volumeChart = useMemo(() => {
-    if (series?.volume_over_time && Array.isArray(series.volume_over_time) && series.volume_over_time.length > 0) {
-      return series.volume_over_time;
-    }
-    if (charts?.by_pipeline && Array.isArray(charts.by_pipeline) && charts.by_pipeline.length > 0) {
-      return charts.by_pipeline;
-    }
-    return [];
-  }, [series, charts]);
-
-  // Filtered dataset
-  const filtered = useMemo(() => {
-    return data.filter(d => {
-      const pName = (d.pipeline_name || '').toLowerCase();
-      const sDataset = (d.source_dataset || d.source || '').toLowerCase();
-      const tDataset = (d.target_dataset || d.target || '').toLowerCase();
-
-      const matchSearch = !search ||
-        pName.includes(search.toLowerCase()) ||
-        sDataset.includes(search.toLowerCase()) ||
-        tDataset.includes(search.toLowerCase());
-
-      const matchPipeline = pipelineFilter === 'All' || d.pipeline_name === pipelineFilter;
-      return matchSearch && matchPipeline;
+    pipelineMeta.forEach((p) => {
+      if (p.pipeline_id) map[p.pipeline_id] = p;
     });
-  }, [data, search, pipelineFilter]);
+    return map;
+  }, [pipelineMeta]);
 
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
+  const pipelineNames = useMemo(() => {
+    const names = new Set();
+    data.forEach(d => { if (d.pipeline_name) names.add(d.pipeline_name); });
+    byPipeline.forEach(p => { if (p.pipeline_name) names.add(p.pipeline_name); });
+    return [...names].sort();
+  }, [data, byPipeline]);
+
+  const trend = useMemo(() => buildVolumeTrend(series, apiRange), [series, apiRange]);
+  const hasTrendSignal = trend.some(p => Number(p.records) > 0 || Number(p.bytes) > 0);
+
+  const donutData = useMemo(() => {
+    const source = byPipeline.length
+      ? byPipeline
+      : data.filter(d => Number(d.records) > 0 || Number(d.bytes) > 0);
+    return source.map((p, i) => ({
+      name: p.pipeline_name || p.name || '—',
+      value: Number(p.bytes ?? 0) || Number(p.records ?? 0),
+      records: Number(p.records ?? 0),
+      bytes: Number(p.bytes ?? 0),
+      share: p.share_pct ?? null,
+      color: PIPELINE_COLORS[i % PIPELINE_COLORS.length],
+      bytes_display: formatBytes(p.bytes) || (p.bytes_display ?? '—'),
+    })).filter(d => d.value > 0);
+  }, [byPipeline, data]);
+
+  const filtered = useMemo(() => data.filter((d) => {
+    const st = String(d.status_key || d.status || '').toLowerCase();
+    const records = Number(d.records ?? 0);
+    const hay = [d.pipeline_name, d.pipeline_id].join(' ').toLowerCase();
+    const statusOk = statusFilter === 'All'
+      || (statusFilter === 'healthy' && (st === 'healthy' || st === 'good' || st === 'ok'))
+      || (statusFilter === 'warning' && (st === 'warning' || st === 'warn' || st === 'degraded'))
+      || (statusFilter === 'critical' && (st === 'critical' || st === 'unhealthy' || st === 'error'));
+    const activityOk = activityFilter === 'All'
+      || (activityFilter === 'active' && records > 0)
+      || (activityFilter === 'empty' && records === 0);
+    const pipelineOk = pipelineFilter === 'All' || d.pipeline_name === pipelineFilter;
+    return (!search || hay.includes(search.toLowerCase())) && statusOk && activityOk && pipelineOk;
+  }), [data, search, statusFilter, activityFilter, pipelineFilter]);
+
+  const breakByPipeline = useMemo(() => {
+    if (byPipeline.length) {
+      return aggregateShares(byPipeline.map(p => ({
+        name: p.pipeline_name || '—',
+        bytes: p.bytes,
+        records: p.records,
+      })));
+    }
+    return aggregateShares(data.map(d => ({
+      name: d.pipeline_name || '—',
+      bytes: d.bytes,
+      records: d.records,
+    })));
+  }, [byPipeline, data]);
+
+  const breakBySource = useMemo(() => {
+    const buckets = {};
+    data.forEach((d) => {
+      const meta = metaById[d.pipeline_id];
+      const name = meta?.source_tool || meta?.source?.tool || 'Unknown source';
+      if (!buckets[name]) buckets[name] = { name, bytes: 0, records: 0 };
+      buckets[name].bytes += Number(d.bytes || 0);
+      buckets[name].records += Number(d.records || 0);
+    });
+    return aggregateShares(Object.values(buckets));
+  }, [data, metaById]);
+
+  const breakByDataset = useMemo(() => {
+    const buckets = {};
+    recentRuns.forEach((run) => {
+      (run.assets || [])
+        .filter(a => String(a.asset_role || '').toUpperCase() === 'TARGET')
+        .forEach((a) => {
+          const name = a.object_name || a.dataset_id || 'Unknown dataset';
+          if (!buckets[name]) buckets[name] = { name, bytes: 0, records: 0 };
+          buckets[name].bytes += Number(a.size_bytes || 0);
+          buckets[name].records += Number(a.row_count || 0);
+        });
+    });
+    return aggregateShares(Object.values(buckets));
+  }, [recentRuns]);
+
+  const breakdownRows = breakTab === 'source'
+    ? breakBySource
+    : breakTab === 'dataset'
+      ? breakByDataset
+      : breakByPipeline;
+
+  const filteredRuns = useMemo(() => recentRuns.filter((r) => {
+    if (pipelineFilter !== 'All' && r.pipeline_name !== pipelineFilter) return false;
+    if (search) {
+      const hay = [r.pipeline_name, r.id, r.status].join(' ').toLowerCase();
+      if (!hay.includes(search.toLowerCase())) return false;
+    }
+    return true;
+  }), [recentRuns, pipelineFilter, search]);
+
+  const unhealthy = data.filter(d => {
+    const tone = statusTone(d.status_key || d.status);
+    return tone === 'warn' || tone === 'crit';
+  }).length;
+  const critPct = volumeMonitors.find(m => m.config?.crit_pct != null)?.config?.crit_pct;
+  const emptyWindow = totalRows === 0 && data.length === 0;
+
+  const bytesLabel = kpi.data_received?.display
+    || formatBytes(totalBytes)
+    || '—';
+  const rowsLabel = kpi.records_received?.display
+    ?? (summary?.total_rows != null ? String(summary.total_rows) : null);
+
+  const activeDisplay = String(kpi.pipelines_active?.display || '');
+  const activeParts = activeDisplay.match(/(\d+)\s*\/\s*(\d+)/);
+  const activeHint = activeParts
+    ? `${activeParts[1]} with volume, ${Math.max(0, Number(activeParts[2]) - Number(activeParts[1]))} inactive`
+    : 'with volume in this range';
+
+  const filtersDirty = search || statusFilter !== 'All' || activityFilter !== 'All' || pipelineFilter !== 'All';
+
+  const targetFromRun = (run) => {
+    const assets = run.assets || [];
+    const target = assets.find(a => String(a.asset_role || '').toUpperCase() === 'TARGET');
+    return {
+      records: run.rows_written ?? run.rows_added ?? target?.row_count ?? null,
+      bytes: target?.size_bytes ?? null,
+    };
+  };
 
   return (
     <div className="fade-in">
       <PageHeader
         title="Volume"
-        subtitle="Track row count anomalies, data ingested volumes, and row drop rates."
+        subtitle="Track how much data each pipeline produced — rows and size over time."
         onRefresh={loadData}
-        onDateChange={handleHeaderDateChange}
+        datePreset={headerDatePreset}
+        onDateChange={(v) => handleDateChange(setHeaderDatePreset, setCustomDateRange, v)}
       />
 
       <div className="page-body">
-        {/* Filters Bar */}
-        <div className="filters-bar">
-          <div className="search-box">
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Search dataset, pipeline..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="filter-select">
-            <label>Pipeline</label>
-            <select
-              className="select-control"
-              value={pipelineFilter}
-              onChange={e => setPipelineFilter(e.target.value)}
-            >
-              <option value="All">All Pipelines</option>
-              {distinctPipelines.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* 4 Summary KPI Cards */}
-        <div className="kpi-grid-4 mt-4">
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#EEF2FF', color: '#6366F1' }}>
-                <Database size={18} />
+        {loading ? <LoadingSpinner /> : (
+          <>
+            {emptyWindow ? (
+              <div className="obs-alert is-warn">
+                <AlertTriangle size={18} />
+                <div>
+                  <strong>No volume in this time range.</strong>
+                  {' '}Try <em>All Time</em> or <em>Last 30 Days</em>
+                  {prevRows != null && Number(prevRows) > 0
+                    ? ` — previous window had ${prevRows} rows.`
+                    : '.'}
+                </div>
               </div>
-              <span className="kpi-label">Data Received</span>
-            </div>
-            <div className="kpi-value">
-              {kpiMap.data_received?.display || '65 Rows'}
-            </div>
-            <div className="kpi-delta up">
-              <ArrowUpRight size={13} />
-              <span>Target warehouse rows</span>
-            </div>
-          </div>
-
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <Activity size={18} />
-              </div>
-              <span className="kpi-label">Records Ingested</span>
-            </div>
-            <div className="kpi-value" style={{ color: '#10B981' }}>
-              {kpiMap.records_received?.display || '65'}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              Across active Snowflake tables
-            </div>
-          </div>
-
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#FFFBEB', color: '#F59E0B' }}>
+            ) : unhealthy > 0 ? (
+              <div className="obs-alert is-warn">
                 <TrendingUp size={18} />
+                <div>
+                  <strong>{unhealthy} pipeline{unhealthy === 1 ? '' : 's'} need review.</strong>
+                  {' '}Volume status is not healthy for those rows below.
+                </div>
               </div>
-              <span className="kpi-label">Volume Anomalies</span>
-            </div>
-            <div className="kpi-value" style={{ color: '#10B981' }}>0</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              0 unexpected row drops
-            </div>
-          </div>
-
-          <div className="kpi-card">
-            <div className="kpi-card-header">
-              <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
-                <GitBranch size={18} />
+            ) : (
+              <div className="obs-alert is-ok">
+                <CheckCircle size={18} />
+                <div>
+                  <strong>Volume looks normal.</strong>
+                  {' '}{dash(rowsLabel)} records · {dash(bytesLabel)} received.
+                </div>
               </div>
-              <span className="kpi-label">Monitored Datasets</span>
-            </div>
-            <div className="kpi-value">{pipelinesList.length || 1}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              Active table volumes
-            </div>
-          </div>
-        </div>
+            )}
 
-        {/* Volume Trend Visual Chart */}
-        <div className="card mt-4">
-          <div className="card-header">
-            <div>
-              <span className="card-title">Volume Ingestion Trend (Rows Over Time)</span>
-              <span className="card-subtitle">Aggregated record counts across pipeline runs</span>
+            <div className="obs-insight">
+              <Info size={15} />
+              <div>
+                <strong>How volume is measured</strong>
+                <span>
+                  Totals for the selected range: {dash(rowsLabel)} rows · {dash(bytesLabel)}.
+                  {critPct != null ? ` Drop monitor alerts if rows fall by ≥${critPct}%.` : ''}
+                  {prevRows != null ? ` Previous window: ${prevRows} rows.` : ''}
+                </span>
+              </div>
             </div>
-          </div>
-          <div style={{ height: 200, width: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={volumeChart} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-                <Tooltip {...TOOLTIP_STYLE} />
-                <Area type="monotone" dataKey="rows" stroke="#3B82F6" strokeWidth={2} fillOpacity={1} fill="url(#volGrad)" name="Rows" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        {/* Monitored Pipeline Datasets Table */}
-        <div className="card mt-4">
-          <div className="card-header">
-            <div>
-              <span className="card-title">Monitored Datasets & Target Tables</span>
-              <span className="card-subtitle">Volume verification across source and target schemas</span>
+            <div className="filters-bar">
+              <div className="search-box">
+                <Search size={14} />
+                <input
+                  placeholder="Search pipeline…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="filter-select">
+                <label>Pipeline</label>
+                <select
+                  className="select-control"
+                  value={pipelineFilter}
+                  onChange={e => setPipelineFilter(e.target.value)}
+                >
+                  <option value="All">All pipelines</option>
+                  {pipelineNames.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-select">
+                <label>Status</label>
+                <select
+                  className="select-control"
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                >
+                  <option value="All">All</option>
+                  <option value="healthy">Healthy</option>
+                  <option value="warning">Warning</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+              <div className="filter-select">
+                <label>Activity</label>
+                <select
+                  className="select-control"
+                  value={activityFilter}
+                  onChange={e => setActivityFilter(e.target.value)}
+                >
+                  <option value="All">All</option>
+                  <option value="active">Has rows</option>
+                  <option value="empty">No rows</option>
+                </select>
+              </div>
+              {filtersDirty && (
+                <button
+                  type="button"
+                  className="export-btn"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={() => {
+                    setSearch('');
+                    setStatusFilter('All');
+                    setActivityFilter('All');
+                    setPipelineFilter('All');
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
-          </div>
 
-          <div className="table-wrapper">
-            <table className="vithi-table">
-              <thead>
-                <tr>
-                  <th>Pipeline Name</th>
-                  <th>Source Table</th>
-                  <th>Target Table</th>
-                  <th>Target Rows</th>
-                  <th>Volume Status</th>
-                  <th>Last Sync</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pipelinesList.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>
-                      No volume datasets registered.
-                    </td>
-                  </tr>
+            <div className="kpi-grid-4 mt-4">
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#EEF2FF', color: '#6366F1' }}><Database size={18} /></div>
+                  <span className="kpi-label">Data received</span>
+                </div>
+                <div className="kpi-value">{dash(kpi.data_received?.display)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>vs previous period</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}><Activity size={18} /></div>
+                  <span className="kpi-label">Records received</span>
+                </div>
+                <div className="kpi-value" style={{ color: totalRows > 0 ? '#10B981' : undefined }}>
+                  {dash(kpi.records_received?.display)}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>vs previous period</div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}><GitBranch size={18} /></div>
+                  <span className="kpi-label">Pipelines active</span>
+                </div>
+                <div className="kpi-value">{dash(kpi.pipelines_active?.display)}</div>
+                <div style={{
+                  fontSize: 11,
+                  marginTop: 2,
+                  color: kpi.pipelines_active?.tone === 'warn' ? '#D97706' : 'var(--text-muted)',
+                }}>
+                  {activeHint}
+                </div>
+              </div>
+              <div className="kpi-card">
+                <div className="kpi-card-header">
+                  <div className="kpi-icon" style={{ background: '#FFFBEB', color: '#F59E0B' }}><TrendingUp size={18} /></div>
+                  <span className="kpi-label">Runs</span>
+                </div>
+                <div className="kpi-value">{dash(kpi.runs?.display)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>in selected range</div>
+              </div>
+            </div>
+
+            <div className="grid-2 mt-4" style={{ gap: 16 }}>
+              <div className="card">
+                <div className="card-header vol-trend-header">
+                  <div>
+                    <span className="card-title">Data volume trend</span>
+                    <span className="card-subtitle">Daily records, size, and volume in this range</span>
+                  </div>
+                  <div className="vol-trend-legend">
+                    <span><i style={{ background: '#1D4ED8' }} /> Records</span>
+                    <span><i style={{ background: '#10B981' }} /> Size (KB)</span>
+                    <span><i style={{ background: '#93C5FD' }} /> Volume (GB)</span>
+                  </div>
+                </div>
+                {trend.length === 0 || !hasTrendSignal ? (
+                  <div className="obs-simple-empty">
+                    {trend.length === 0
+                      ? 'No history points for this range.'
+                      : 'No volume in this window — try Last 30 Days or All Time.'}
+                  </div>
                 ) : (
-                  pipelinesList.map(pipe => (
-                    <tr key={pipe.pipeline_id || pipe.pipeline_name}>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <GitBranch size={15} style={{ color: 'var(--accent)' }} />
-                          <span style={{ fontWeight: 600 }}>{pipe.pipeline_name}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="tag">{pipe.source || pipe.source_dataset || '—'}</span>
-                      </td>
-                      <td>
-                        <span className="tag accent">{pipe.target || pipe.target_dataset || '—'}</span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: '#3B82F6' }}>
-                        {pipe.target_rows != null ? `${pipe.target_rows} rows` : (pipe.rows != null ? `${pipe.rows} rows` : '—')}
-                      </td>
-                      <td>
-                        <span className={`status-pill ${pipe.status_key === 'healthy' || pipe.status_key === 'success' ? 'good' : 'warning'}`}>
-                          {pipe.status || pipe.status_key || '—'}
-                        </span>
-                      </td>
-                      <td style={{ color: 'var(--text-secondary)' }}>
-                        {pipe.last_run_age || pipe.last_run || 'recently'}
-                      </td>
-                    </tr>
-                  ))
+                  <div style={{ height: 260, padding: '4px 8px 8px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="volRecGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.02} />
+                          </linearGradient>
+                          <linearGradient id="volSizeGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10B981" stopOpacity={0.28} />
+                            <stop offset="100%" stopColor="#10B981" stopOpacity={0.02} />
+                          </linearGradient>
+                          <linearGradient id="volGbGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#93C5FD" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#93C5FD" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                          axisLine={false}
+                          tickLine={false}
+                          interval="preserveStartEnd"
+                          minTickGap={36}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                          axisLine={false}
+                          tickLine={false}
+                          width={36}
+                        />
+                        <Tooltip content={<TrendTooltip />} cursor={{ stroke: '#CBD5E1', strokeDasharray: '4 4' }} />
+                        <Area
+                          type="monotone"
+                          dataKey="volume_gb"
+                          name="Volume (GB)"
+                          stroke="#93C5FD"
+                          fill="url(#volGbGrad)"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 4, strokeWidth: 0, fill: '#93C5FD' }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="size_kb"
+                          name="Size (KB)"
+                          stroke="#10B981"
+                          fill="url(#volSizeGrad)"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 4, strokeWidth: 0, fill: '#10B981' }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="records"
+                          name="Records"
+                          stroke="#1D4ED8"
+                          fill="url(#volRecGrad)"
+                          strokeWidth={2.5}
+                          dot={false}
+                          activeDot={{ r: 5, strokeWidth: 0, fill: '#1D4ED8' }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header">
+                  <div>
+                    <span className="card-title">Volume by pipeline</span>
+                    <span className="card-subtitle">Share of total size in this range</span>
+                  </div>
+                </div>
+                {donutData.length === 0 ? (
+                  <div className="obs-simple-empty">No pipeline share data for this range.</div>
+                ) : (
+                  <div className="vol-donut-wrap">
+                    <div className="vol-donut-chart">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={donutData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={52}
+                            outerRadius={74}
+                            paddingAngle={donutData.length > 1 ? 2 : 0}
+                          >
+                            {donutData.map((e) => (
+                              <Cell key={e.name} fill={e.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            {...TOOLTIP_STYLE}
+                            formatter={(_, __, props) => {
+                              const p = props?.payload;
+                              if (!p) return ['—', ''];
+                              const share = p.share != null ? `${p.share}%` : '';
+                              return [
+                                `${p.bytes_display || formatBytes(p.bytes) || p.value}${share ? ` · ${share}` : ''} · ${p.records} rows`,
+                                p.name,
+                              ];
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="vol-donut-center">
+                        <strong>{dash(bytesLabel)}</strong>
+                        <span>Total size</span>
+                      </div>
+                    </div>
+                    <div className="vol-donut-legend">
+                      {donutData.map(d => (
+                        <div key={d.name} className="vol-donut-legend-row">
+                          <span className="vol-donut-swatch" style={{ background: d.color }} />
+                          <div className="vol-donut-legend-text">
+                            <strong>{d.name}</strong>
+                            <span>
+                              {d.bytes_display}
+                              {d.share != null ? ` · ${d.share}%` : ''}
+                              {` · ${d.records} rows`}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Pipeline volume + Volume breakdown (mockup layout) */}
+            <div className="grid-2 mt-4" style={{ gap: 16 }}>
+              <div className="card">
+                <div className="card-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Database size={16} style={{ color: '#3B82F6' }} />
+                    <div>
+                      <span className="card-title">Pipeline volume</span>
+                      <span className="card-subtitle">Per-pipeline totals for this range</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="table-wrapper">
+                  <table className="vithi-table">
+                    <thead>
+                      <tr>
+                        <th>Pipeline</th>
+                        <th>Records</th>
+                        <th>Size</th>
+                        <th>Runs</th>
+                        <th>Last updated</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>
+                            {data.length === 0
+                              ? 'No volume data for this range. Try All Time or Last 30 Days.'
+                              : 'No pipelines match these filters.'}
+                          </td>
+                        </tr>
+                      ) : filtered.map(item => {
+                        const tone = statusTone(item.status_key || item.status);
+                        const pill = tone === 'good' ? 'good' : tone === 'warn' ? 'warning' : tone === 'crit' ? 'critical' : 'neutral';
+                        return (
+                          <tr key={item.pipeline_id || item.pipeline_name}>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Database size={14} style={{ color: '#64748B' }} />
+                                <strong>{dash(item.pipeline_name)}</strong>
+                              </div>
+                            </td>
+                            <td style={{ fontWeight: 700, color: '#3B82F6' }}>
+                              {dash(item.records_display ?? item.records)}
+                            </td>
+                            <td>{dash(item.bytes_display ?? formatBytes(item.bytes))}</td>
+                            <td>{dash(item.runs)}</td>
+                            <td>
+                              <div style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>
+                                {formatStamp(item.last_updated_at) || '—'}
+                              </div>
+                              {item.last_updated_age && (
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                  {item.last_updated_age}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <span className={`status-pill ${pill}`}>
+                                {dash(item.status)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="vol-table-footer">
+                  Showing {filtered.length} of {data.length} pipeline{data.length === 1 ? '' : 's'}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Share2 size={16} style={{ color: '#3B82F6' }} />
+                    <div>
+                      <span className="card-title">Volume breakdown</span>
+                      <span className="card-subtitle">Share of size in this range</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="vol-break-tabs">
+                  {[
+                    { id: 'pipeline', label: 'By Pipeline' },
+                    { id: 'source', label: 'By Source' },
+                    { id: 'dataset', label: 'By Dataset' },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={`vol-break-tab ${breakTab === tab.id ? 'active' : ''}`}
+                      onClick={() => setBreakTab(tab.id)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {breakdownRows.length === 0 ? (
+                  <div className="obs-simple-empty">
+                    {breakTab === 'dataset'
+                      ? 'No target dataset sizes in recent runs for this range.'
+                      : 'No breakdown data for this range.'}
+                  </div>
+                ) : (
+                  <div className="vol-break-body">
+                    <div className="vol-break-bar" title="Share of total size">
+                      {breakdownRows.map(seg => (
+                        <div
+                          key={seg.name}
+                          className="vol-break-seg"
+                          style={{
+                            width: `${Math.max(seg.share, seg.share > 0 ? 2 : 0)}%`,
+                            background: seg.color,
+                          }}
+                          title={`${seg.name}: ${seg.bytes_display} (${seg.share}%)`}
+                        />
+                      ))}
+                    </div>
+                    <div className="vol-break-legend">
+                      {breakdownRows.map(seg => (
+                        <div key={seg.name} className="vol-break-legend-row">
+                          <span className="vol-donut-swatch" style={{ background: seg.color }} />
+                          <strong>{seg.name}</strong>
+                          <span className="vol-break-meta">{seg.bytes_display}</span>
+                          <span className="vol-break-pct">{seg.share}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Recent runs */}
+            <div className="card mt-4">
+              <div className="card-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Clock size={16} style={{ color: '#3B82F6' }} />
+                  <div>
+                    <span className="card-title">Recent runs</span>
+                    <span className="card-subtitle">Executions that produced volume in this range</span>
+                  </div>
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table className="vithi-table">
+                  <thead>
+                    <tr>
+                      <th>Pipeline</th>
+                      <th>Run ID</th>
+                      <th>Status</th>
+                      <th>Records</th>
+                      <th>Size</th>
+                      <th>Started at</th>
+                      <th>Duration</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRuns.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>
+                          No runs found for this range.
+                        </td>
+                      </tr>
+                    ) : filteredRuns.map((run) => {
+                      const vol = targetFromRun(run);
+                      return (
+                        <tr key={run.id || `${run.pipeline_id}-${run.start_time}`}>
+                          <td><strong>{dash(run.pipeline_name)}</strong></td>
+                          <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#3B82F6' }}>
+                            {shortRunId(run.id)}
+                          </td>
+                          <td>
+                            <span className={`status-pill ${runStatusPill(run.status)}`}>
+                              {prettyStatus(run.status)}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 650 }}>{dash(vol.records)}</td>
+                          <td>{dash(formatBytes(vol.bytes))}</td>
+                          <td>{formatStamp(run.start_time) || '—'}</td>
+                          <td>{dash(run.duration_display ?? (run.duration != null ? `${run.duration}s` : null))}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button
+                              type="button"
+                              className="vol-link-btn"
+                              onClick={() => navigate('/pipelines')}
+                            >
+                              View details →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
