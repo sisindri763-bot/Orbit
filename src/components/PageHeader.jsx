@@ -1,23 +1,52 @@
 import { Calendar, RefreshCw, Download, ChevronDown, Check, X } from 'lucide-react';
 import { useState, useMemo, useRef, useEffect } from 'react';
 
-export default function PageHeader({ title, subtitle, onRefresh, onDateChange, latestTimestamp }) {
+/**
+ * Controlled date header: parent owns `datePreset` / custom range so Reset Filters
+ * and page state stay in sync with the picker UI.
+ */
+export default function PageHeader({
+  title,
+  subtitle,
+  onRefresh,
+  onDateChange,
+  latestTimestamp,
+  datePreset,
+  customStart: customStartProp = '',
+  customEnd: customEndProp = '',
+  presets: presetsProp,
+}) {
   const [env, setEnv] = useState('Production');
   const [refreshing, setRefreshing] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState('all');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [internalPreset, setInternalPreset] = useState(datePreset || 'all');
+  const [customStart, setCustomStart] = useState(customStartProp || '');
+  const [customEnd, setCustomEnd] = useState(customEndProp || '');
   const popoverRef = useRef(null);
 
-  const presets = [
-    { id: 'all', label: 'All Time' },
-    { id: '24h', label: 'Last 24 Hours' },
-    { id: '7d', label: 'Last 7 Days' },
-    { id: '30d', label: 'Last 30 Days' },
-  ];
+  const isControlled = datePreset !== undefined;
+  const selectedPreset = isControlled ? (datePreset || 'all') : internalPreset;
 
-  // Close date picker when clicking outside
+  // Overview passes API presets; other pages omit prop and keep local defaults until updated
+  const presets = presetsProp !== undefined
+    ? (Array.isArray(presetsProp) ? presetsProp : [])
+    : [
+        { id: 'all', label: 'All Time' },
+        { id: '15m', label: 'Last 15 Minutes' },
+        { id: '24h', label: 'Last 24 Hours' },
+        { id: '7d', label: 'Last 7 Days' },
+        { id: '30d', label: 'Last 30 Days' },
+      ];
+
+  useEffect(() => {
+    setCustomStart(customStartProp || '');
+    setCustomEnd(customEndProp || '');
+  }, [customStartProp, customEndProp]);
+
+  useEffect(() => {
+    if (isControlled) setInternalPreset(datePreset || 'all');
+  }, [isControlled, datePreset]);
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (popoverRef.current && !popoverRef.current.contains(event.target)) {
@@ -27,9 +56,7 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
     if (datePickerOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [datePickerOpen]);
 
   const handleRefresh = async () => {
@@ -43,16 +70,14 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
     }
   };
 
-  const handleExport = () => {
-    window.print();
-  };
-
-  // Dynamic date range label
   const dateRangeLabel = useMemo(() => {
-    const end = latestTimestamp ? new Date(latestTimestamp) : new Date();
-    if (selectedPreset === 'all') {
-      return 'All Recorded History';
+    if (selectedPreset === 'custom' && customStart && customEnd) {
+      return `${customStart} – ${customEnd}`;
     }
+    const fromCatalog = presets.find(p => p.id === selectedPreset);
+    if (fromCatalog?.label) return fromCatalog.label;
+
+    const end = latestTimestamp ? new Date(latestTimestamp) : new Date();
     if (selectedPreset === '24h') {
       const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
       return `${start.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
@@ -65,21 +90,18 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
       const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
       return `${start.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} – ${end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
     }
-    if (customStart && customEnd) {
-      return `${customStart} – ${customEnd}`;
-    }
-    return 'Select Date Range';
-  }, [selectedPreset, customStart, customEnd, latestTimestamp]);
+    return selectedPreset || 'Select Date Range';
+  }, [selectedPreset, customStart, customEnd, latestTimestamp, presets]);
 
   const handleSelectPreset = (presetId) => {
-    setSelectedPreset(presetId);
+    if (!isControlled) setInternalPreset(presetId);
     setDatePickerOpen(false);
     if (onDateChange) onDateChange(presetId);
   };
 
   const handleApplyCustom = () => {
     if (customStart && customEnd) {
-      setSelectedPreset('custom');
+      if (!isControlled) setInternalPreset('custom');
       setDatePickerOpen(false);
       if (onDateChange) onDateChange({ start: customStart, end: customEnd });
     }
@@ -93,7 +115,6 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
       </div>
 
       <div className="page-header-right">
-        {/* Environment Selector */}
         <div className="header-btn">
           <span style={{ color: 'var(--text-secondary)' }}>Environment:</span>
           <select value={env} onChange={e => setEnv(e.target.value)}>
@@ -103,7 +124,6 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
           </select>
         </div>
 
-        {/* Interactive Date Range Picker Popover */}
         <div style={{ position: 'relative' }} ref={popoverRef}>
           <button
             type="button"
@@ -121,16 +141,17 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
             <div className="date-picker-popover">
               <div className="date-picker-popover-header">
                 <span className="date-picker-popover-title">Date Range Presets</span>
-                <button
-                  className="date-picker-close-btn"
-                  onClick={() => setDatePickerOpen(false)}
-                >
+                <button className="date-picker-close-btn" onClick={() => setDatePickerOpen(false)}>
                   <X size={14} />
                 </button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {presets.map(p => (
+                {presets.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 4px' }}>
+                    Loading date presets from API…
+                  </div>
+                ) : presets.map(p => (
                   <button
                     key={p.id}
                     className={`preset-btn ${selectedPreset === p.id ? 'active' : ''}`}
@@ -170,17 +191,11 @@ export default function PageHeader({ title, subtitle, onRefresh, onDateChange, l
           )}
         </div>
 
-        {/* Refresh Button */}
-        <button
-          className="icon-btn"
-          onClick={handleRefresh}
-          title="Refresh data"
-        >
+        <button className="icon-btn" onClick={handleRefresh} title="Refresh data">
           <RefreshCw size={13} className={refreshing ? 'spin' : ''} />
         </button>
 
-        {/* Export Button */}
-        <button className="export-btn" onClick={handleExport}>
+        <button className="export-btn" onClick={() => window.print()}>
           <Download size={13} />
           <span>Export</span>
         </button>
