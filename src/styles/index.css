@@ -1263,4 +1263,134 @@ html.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
   animation: spin 0.8s linear infinite !important;
 }
 
+/* ── Pipelines catalog (master → detail) ─────────────────────────────────── */
+.pipeline-catalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px 8px;
+}
+
+.pipeline-catalog-row {
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: minmax(150px, 1.15fr) minmax(180px, 1.35fr) repeat(4, minmax(70px, 0.7fr));
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pipeline-catalog-row:hover {
+  border-color: #A7F3D0;
+  background: rgba(16, 185, 129, 0.03);
+}
+
+.pipeline-catalog-row.is-selected {
+  border-color: #6EE7B7;
+  background: rgba(16, 185, 129, 0.06);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.15);
+}
+
+.pipeline-catalog-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.pipeline-catalog-row.is-selected .pipeline-catalog-name {
+  color: #047857;
+}
+
+.pipeline-catalog-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.pipeline-catalog-flow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pipeline-flow-arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.pipeline-catalog-meta-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.pipeline-catalog-meta-value {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.pipeline-catalog-meta-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pipeline-activity {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pipeline-activity.is-active {
+  color: #059669;
+}
+
+.pipeline-incident-flag {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #B91C1C;
+  font-weight: 600;
+}
+
+.pipeline-focus-banner {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1100px) {
+  .pipeline-catalog-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .kpi-grid-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pipeline-catalog-row {
+    grid-template-columns: 1fr;
+  }
+}
 
