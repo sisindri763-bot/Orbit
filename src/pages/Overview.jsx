@@ -100,10 +100,23 @@ export default function Overview() {
 
       if (reqId !== requestIdRef.current) return;
 
-      if (ovRes.status === 'fulfilled' && ovRes.value) {
-        setOverviewData(ovRes.value);
+      if (ovRes.status === 'fulfilled' && ovRes.value && typeof ovRes.value === 'object' && !Array.isArray(ovRes.value)) {
+        // Guard: SPA/HTML or proxy errors must not look like "empty dashboard"
+        if (ovRes.value.ok === false || ovRes.value.error) {
+          setError(ovRes.value.error || 'Overview API returned an error');
+          setOverviewData(null);
+        } else if (Array.isArray(ovRes.value.kpis) || Array.isArray(ovRes.value.items) || ovRes.value.generated_at) {
+          setOverviewData(ovRes.value);
+        } else {
+          setError('Invalid overview response (is the API proxy / API_BACKEND_URL working?)');
+          setOverviewData(null);
+        }
       } else if (ovRes.status === 'rejected') {
-        setError(ovRes.reason?.message || 'Failed to load overview');
+        const msg = ovRes.reason?.response?.data?.error
+          || ovRes.reason?.message
+          || 'Failed to load overview';
+        setError(msg);
+        setOverviewData(null);
       }
 
       if (healthRes.status === 'fulfilled' && healthRes.value) {
@@ -423,7 +436,24 @@ export default function Overview() {
             padding: '12px 14px', marginBottom: 14, borderRadius: 8,
             background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 13
           }}>
-            {error} — check API connection / <code>API_BACKEND_URL</code>, then Refresh.
+            <strong>Cannot load Overview data.</strong> {error}
+            <div style={{ marginTop: 8, fontSize: 12, color: '#991B1B' }}>
+              Backend itself is fine when reached directly. Check:
+              <ul style={{ margin: '6px 0 0 18px' }}>
+                <li>Local: <code>API_BACKEND_URL</code> in <code>.env</code>, then restart <code>npm run dev</code></li>
+                <li>Vercel: Project → Settings → Environment Variables → <code>API_BACKEND_URL</code>, then Redeploy</li>
+                <li>Browser DevTools → Network → <code>/api/v1/overview</code> (should be JSON, not HTML/404)</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && !overviewData && (
+          <div style={{
+            padding: '12px 14px', marginBottom: 14, borderRadius: 8,
+            background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', fontSize: 13
+          }}>
+            No overview payload loaded. Click Refresh, or verify the API proxy.
           </div>
         )}
 

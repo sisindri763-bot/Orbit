@@ -5,10 +5,6 @@
       "destination": "/api/bridge/api/v1/:path*"
     },
     {
-      "source": "/api/:path*",
-      "destination": "/api/bridge/api/v1/:path*"
-    },
-    {
       "source": "/v1/:path*",
       "destination": "/api/bridge/v1/:path*"
     },
@@ -17,7 +13,7 @@
       "destination": "/api/bridge/health"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
