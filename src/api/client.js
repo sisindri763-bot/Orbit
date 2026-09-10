@@ -119,8 +119,8 @@ export const fetchMetrics = (params = {}) =>
 export const fetchLineage = (params = {}) =>
   safeGet('/api/v1/lineage', '/api/lineage', params);
 
-export const fetchLineageDetail = (pid) =>
-  safeGet(`/api/v1/lineage/${pid}`, null);
+export const fetchLineageDetail = (pid, params = {}) =>
+  safeGet(`/api/v1/lineage/${pid}`, null, params);
 
 // ── Incidents ────────────────────────────────────────────────────────────────
 export const fetchIncidents = (params = {}) =>

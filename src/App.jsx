@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import './styles/index.css';
 import Sidebar from './components/Sidebar';
@@ -34,7 +34,7 @@ export default function App() {
               <Route path="/observability/volume" element={<Volume />} />
               <Route path="/observability/data-quality" element={<DataQuality />} />
               <Route path="/observability/schema" element={<Schema />} />
-              <Route path="/data-quality" element={<DataQuality />} />
+              <Route path="/data-quality" element={<Navigate to="/observability/data-quality" replace />} />
               <Route path="/lineage" element={<Lineage />} />
               <Route path="/incidents" element={<Incidents />} />
               <Route path="/metrics" element={<Metrics />} />

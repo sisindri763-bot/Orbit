@@ -1,1389 +1,1146 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
-  Database, Server, Sliders, Layers, RefreshCw, Plus, CheckCircle,
-  AlertTriangle, Shield, Search, ArrowRight, Zap, ExternalLink,
-  Edit2, Trash2, Check, X, ChevronRight, Activity, Clock, Cpu, Network,
-  Table, Key, Hash, Code, Sparkles, Eye, FileSpreadsheet, ArrowLeftRight,
-  HelpCircle, Lock, Globe, Terminal, Play, CheckCircle2, CircleDot
+  Database, RefreshCw, Search, ArrowRight, Zap, Eye, X, Play, GitBranch,
+  RotateCcw, Sliders, ChevronRight, Server, Plus, Network
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
   fetchTools,
   fetchPipelines,
+  fetchConnectorTypes,
+  fetchPipelineBindings,
+  fetchPipelineTemplates,
   testToolConnection,
   triggerSync,
   createTool,
   createPipelineFromTools,
-  fetchPipelineBindings,
-  fetchPipelineTemplates,
-  fetchSchema
 } from '../api/client';
 
-// Connector Metadata Definitions with Field Schemas for each technology
-const CONNECTOR_SCHEMAS = {
-  snowflake: {
-    name: 'Snowflake',
-    icon: '❄️',
-    color: '#29B5E8',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'Cloud data warehouse for analytics and BI.',
-    fields: [
-      { key: 'account_id', label: 'Account Identifier', placeholder: 'e.g. nh02575.ap-southeast-7.aws or xy12345.us-east-1', required: true },
-      { key: 'warehouse_id', label: 'Warehouse Name', placeholder: 'e.g. INVENTORY_WH or COMPUTE_WH', required: true },
-      { key: 'database_id', label: 'Database Name', placeholder: 'e.g. INVENTORY_ANALYTICS', required: true },
-      { key: 'schema', label: 'Schema', placeholder: 'e.g. RAW_DATA or FINAL_DATA', required: true },
-      { key: 'tables', label: 'Monitored Tables (comma separated)', placeholder: 'e.g. RAW_INVENTORY, ORDERS', required: false },
-      { key: 'user_id', label: 'Username', placeholder: 'e.g. OBS_USER', required: true },
-      { key: 'sf_role', label: 'Snowflake Role', placeholder: 'e.g. ACCOUNTADMIN or TRANSFORMER', required: false },
-      { key: 'secret', label: 'Password / Private Key', type: 'password', placeholder: '••••••••••••', required: true },
-    ]
-  },
-  databricks: {
-    name: 'Databricks',
-    icon: '🧱',
-    color: '#FF3621',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'Unified lakehouse platform for data, AI and analytics.',
-    fields: [
-      { key: 'server_hostname', label: 'Server Hostname', placeholder: 'e.g. dbc-98a72b1.cloud.databricks.com', required: true },
-      { key: 'http_path', label: 'HTTP Path', placeholder: 'e.g. /sql/1.0/warehouses/a1b2c3d4e5f6', required: true },
-      { key: 'catalog', label: 'Unity Catalog Name', placeholder: 'e.g. main or hive_metastore', required: true },
-      { key: 'schema', label: 'Schema / Database', placeholder: 'e.g. default or analytics_raw', required: true },
-      { key: 'tables', label: 'Monitored Tables', placeholder: 'e.g. raw_events, dim_customers', required: false },
-      { key: 'secret', label: 'Personal Access Token (PAT)', type: 'password', placeholder: 'dapi123456789abcdef...', required: true },
-    ]
-  },
-  bigquery: {
-    name: 'Google BigQuery',
-    icon: '🔍',
-    color: '#4285F4',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'Serverless data warehouse from Google Cloud.',
-    fields: [
-      { key: 'project_id', label: 'GCP Project ID', placeholder: 'e.g. my-company-analytics-prod', required: true },
-      { key: 'dataset_id', label: 'Dataset ID', placeholder: 'e.g. raw_inventory or ecommerce_dw', required: true },
-      { key: 'location', label: 'Processing Location', placeholder: 'e.g. US, EU, or asia-south1', required: false },
-      { key: 'tables', label: 'Monitored Tables', placeholder: 'e.g. dim_products, fact_sales', required: false },
-      { key: 'secret', label: 'Service Account Key (JSON)', type: 'textarea', placeholder: '{"type": "service_account", "project_id": ...}', required: true },
-    ]
-  },
-  redshift: {
-    name: 'Amazon Redshift',
-    icon: '📦',
-    color: '#CC292B',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'Data warehouse for large-scale analytics.',
-    fields: [
-      { key: 'host', label: 'Cluster Endpoint / Host', placeholder: 'e.g. redshift-cluster-1.c1xxxx.us-east-1.redshift.amazonaws.com', required: true },
-      { key: 'port', label: 'Port', placeholder: '5439', required: true },
-      { key: 'database_id', label: 'Database Name', placeholder: 'e.g. dev or analytics', required: true },
-      { key: 'schema', label: 'Schema', placeholder: 'e.g. public or data_mart', required: true },
-      { key: 'user_id', label: 'Database Username', placeholder: 'e.g. awsuser', required: true },
-      { key: 'secret', label: 'Database Password', type: 'password', placeholder: '••••••••', required: true },
-    ]
-  },
-  s3: {
-    name: 'Amazon S3',
-    icon: '🪣',
-    color: '#E05243',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'Object storage for raw data and backups.',
-    fields: [
-      { key: 'bucket_name', label: 'S3 Bucket Name', placeholder: 'e.g. my-company-data-lake-raw', required: true },
-      { key: 'region', label: 'AWS Region', placeholder: 'e.g. us-east-1 or ap-southeast-1', required: true },
-      { key: 'prefix', label: 'Prefix / Directory Path', placeholder: 'e.g. telemetry/inventory/', required: false },
-      { key: 'access_key_id', label: 'AWS Access Key ID', placeholder: 'AKIAIOSFODNN7EXAMPLE', required: true },
-      { key: 'secret', label: 'AWS Secret Access Key', type: 'password', placeholder: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', required: true },
-    ]
-  },
-  synapse: {
-    name: 'Azure Synapse',
-    icon: '🔷',
-    color: '#0078D4',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'Analytics service for big data and warehousing.',
-    fields: [
-      { key: 'workspace_name', label: 'Synapse Workspace Name', placeholder: 'e.g. my-synapse-workspace', required: true },
-      { key: 'sql_pool', label: 'Dedicated SQL Pool / Database', placeholder: 'e.g. SQLPool01', required: true },
-      { key: 'schema', label: 'Schema', placeholder: 'e.g. dbo or staging', required: true },
-      { key: 'user_id', label: 'SQL Admin Username', placeholder: 'e.g. sqladminuser', required: true },
-      { key: 'secret', label: 'SQL Admin Password', type: 'password', placeholder: '••••••••', required: true },
-    ]
-  },
-  clickhouse: {
-    name: 'ClickHouse',
-    icon: '⚡',
-    color: '#FFCC00',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'Fast open-source columnar database management system.',
-    fields: [
-      { key: 'host', label: 'ClickHouse Host', placeholder: 'e.g. clickhouse.company.internal or xx.clickhouse.cloud', required: true },
-      { key: 'port', label: 'HTTP / Native Port', placeholder: '8443 or 8123', required: true },
-      { key: 'database_id', label: 'Database Name', placeholder: 'e.g. default or analytics', required: true },
-      { key: 'user_id', label: 'Username', placeholder: 'default', required: true },
-      { key: 'secret', label: 'Password', type: 'password', placeholder: '••••••••', required: false },
-    ]
-  },
-  iceberg: {
-    name: 'Apache Iceberg',
-    icon: '🧊',
-    color: '#1B9AAA',
-    kind: 'database',
-    category: 'warehouses',
-    desc: 'High-performance open table format for huge analytic datasets.',
-    fields: [
-      { key: 'catalog_uri', label: 'REST Catalog / Hive Metastore URI', placeholder: 'e.g. http://iceberg-catalog:8181', required: true },
-      { key: 'warehouse_location', label: 'Warehouse S3/GCS Location', placeholder: 'e.g. s3://iceberg-data-warehouse/', required: true },
-      { key: 'namespace', label: 'Namespace / Schema', placeholder: 'e.g. prod_analytics', required: true },
-      { key: 'secret', label: 'OAuth Token / Credential', type: 'password', placeholder: '••••••••', required: false },
-    ]
-  },
-  dbt: {
-    name: 'dbt Cloud',
-    icon: '🟧',
-    color: '#FF694B',
-    kind: 'etl',
-    category: 'transformations',
-    desc: 'Data transformation & modeling.',
-    fields: [
-      { key: 'account_id', label: 'dbt Cloud Account ID', placeholder: 'e.g. 70506183159506', required: true },
-      { key: 'job_id', label: 'dbt Cloud Job ID', placeholder: 'e.g. 70506183138234', required: true },
-      { key: 'project_name', label: 'Project Name', placeholder: 'e.g. inventory_analytics', required: true },
-      { key: 'api_base', label: 'dbt Cloud API Base URL', placeholder: 'e.g. https://cloud.getdbt.com/api/v2 or https://qi314.us1.dbt.com/api/v2', required: true },
-      { key: 'secret', label: 'dbt Cloud User Token / Service API Key', type: 'password', placeholder: 'dbtu_xxxx or dbtc_xxxx', required: true },
-    ]
-  },
-  airflow: {
-    name: 'Apache Airflow',
-    icon: '🌀',
-    color: '#017CEE',
-    kind: 'orchestrator',
-    category: 'transformations',
-    desc: 'Workflow orchestration & scheduling.',
-    fields: [
-      { key: 'webserver_url', label: 'Airflow Webserver URL', placeholder: 'e.g. https://airflow.internal.company.com', required: true },
-      { key: 'dag_id', label: 'Monitored DAG ID', placeholder: 'e.g. inventory_pipeline_daily', required: true },
-      { key: 'user_id', label: 'Airflow API Username', placeholder: 'e.g. airflow_admin', required: true },
-      { key: 'secret', label: 'Airflow Password / API Bearer Token', type: 'password', placeholder: '••••••••', required: true },
-    ]
-  },
-  fivetran: {
-    name: 'Fivetran',
-    icon: '🔄',
-    color: '#0070F3',
-    kind: 'etl',
-    category: 'transformations',
-    desc: 'Managed data movement and replication.',
-    fields: [
-      { key: 'connector_id', label: 'Fivetran Connector ID', placeholder: 'e.g. connector_inventory_sync', required: true },
-      { key: 'group_id', label: 'Destination Group ID', placeholder: 'e.g. group_snowflake_prod', required: true },
-      { key: 'api_key', label: 'Fivetran API Key', placeholder: 'e.g. fv_key_xxxx', required: true },
-      { key: 'secret', label: 'Fivetran API Secret', type: 'password', placeholder: 'fv_sec_xxxx', required: true },
-    ]
-  },
-  prefect: {
-    name: 'Prefect',
-    icon: '🔮',
-    color: '#00263E',
-    kind: 'orchestrator',
-    category: 'transformations',
-    desc: 'Data orchestration for modern data stacks.',
-    fields: [
-      { key: 'api_url', label: 'Prefect Cloud / Server API URL', placeholder: 'e.g. https://api.prefect.cloud/api/accounts/...', required: true },
-      { key: 'workspace', label: 'Workspace Name', placeholder: 'e.g. analytics-prod', required: true },
-      { key: 'flow_name', label: 'Flow Name', placeholder: 'e.g. inventory_etl_flow', required: true },
-      { key: 'secret', label: 'Prefect API Key', type: 'password', placeholder: 'pnu_xxxx', required: true },
-    ]
-  },
-  postgres: {
-    name: 'PostgreSQL',
-    icon: '🐘',
-    color: '#336791',
-    kind: 'database',
-    category: 'databases',
-    desc: 'Open source relational database.',
-    fields: [
-      { key: 'host', label: 'Host / Server Address', placeholder: 'e.g. postgres.company.internal or 10.0.1.25', required: true },
-      { key: 'port', label: 'Port', placeholder: '5432', required: true },
-      { key: 'database_id', label: 'Database Name', placeholder: 'e.g. prod_inventory', required: true },
-      { key: 'schema', label: 'Schema', placeholder: 'public', required: true },
-      { key: 'tables', label: 'Monitored Tables', placeholder: 'e.g. raw_inventory, transactions', required: false },
-      { key: 'user_id', label: 'Username', placeholder: 'postgres_obs', required: true },
-      { key: 'secret', label: 'Password', type: 'password', placeholder: '••••••••', required: true },
-    ]
-  },
-  mysql: {
-    name: 'MySQL',
-    icon: '🐬',
-    color: '#00758F',
-    kind: 'database',
-    category: 'databases',
-    desc: 'Popular open source database.',
-    fields: [
-      { key: 'host', label: 'Host / Server Address', placeholder: 'e.g. mysql-prod.internal', required: true },
-      { key: 'port', label: 'Port', placeholder: '3306', required: true },
-      { key: 'database_id', label: 'Database Name', placeholder: 'e.g. inventory_db', required: true },
-      { key: 'tables', label: 'Monitored Tables', placeholder: 'e.g. raw_items, inventory_log', required: false },
-      { key: 'user_id', label: 'Username', placeholder: 'app_user', required: true },
-      { key: 'secret', label: 'Password', type: 'password', placeholder: '••••••••', required: true },
-    ]
-  },
-  mongodb: {
-    name: 'MongoDB',
-    icon: '🍃',
-    color: '#47A248',
-    kind: 'database',
-    category: 'databases',
-    desc: 'NoSQL document database.',
-    fields: [
-      { key: 'connection_uri', label: 'MongoDB Connection URI', placeholder: 'mongodb+srv://cluster0.xxxx.mongodb.net', required: true },
-      { key: 'database_id', label: 'Database Name', placeholder: 'e.g. analytics_store', required: true },
-      { key: 'collection_name', label: 'Target Collection', placeholder: 'e.g. raw_events', required: true },
-      { key: 'user_id', label: 'Username', placeholder: 'mongo_admin', required: false },
-      { key: 'secret', label: 'Password / Auth Token', type: 'password', placeholder: '••••••••', required: true },
-    ]
-  }
+/**
+ * Design B — Operations Hub (Fivetran/Monte Carlo style):
+ * 1) Connected systems & pipeline composition first (live API)
+ * 2) Connector directory second (API types + roadmap Coming soon)
+ * 3) Sync logs only after Run sync (drawer), never an empty permanent console
+ */
+
+const CONNECTOR_META = {
+  snowflake: { label: 'Snowflake', category: 'warehouses', color: '#29B5E8', monogram: 'SF', desc: 'Cloud data warehouse for analytics and BI.' },
+  redshift: { label: 'Amazon Redshift', category: 'warehouses', color: '#CC292B', monogram: 'RS', desc: 'Data warehouse for large-scale analytics.' },
+  bigquery: { label: 'Google BigQuery', category: 'warehouses', color: '#4285F4', monogram: 'BQ', desc: 'Serverless data warehouse from Google Cloud.' },
+  mysql: { label: 'MySQL', category: 'databases', color: '#00758F', monogram: 'MY', desc: 'Popular open source relational database.' },
+  postgres: { label: 'PostgreSQL', category: 'databases', color: '#336791', monogram: 'PG', desc: 'Open source relational database.' },
+  dbt: { label: 'dbt Cloud', category: 'transformations', color: '#FF694B', monogram: 'dbt', desc: 'Data transformation and modeling.' },
+  dbt_cloud: { label: 'dbt Cloud', category: 'transformations', color: '#FF694B', monogram: 'dbt', desc: 'Data transformation and modeling.' },
+  airbyte: { label: 'Airbyte', category: 'transformations', color: '#615EFF', monogram: 'AB', desc: 'Open-source data movement and ELT.' },
+  airflow: { label: 'Apache Airflow', category: 'transformations', color: '#017CEE', monogram: 'AF', desc: 'Workflow orchestration and scheduling.' },
 };
 
-const CATEGORIES = [
-  { id: 'all', label: 'All', count: 15 },
-  { id: 'warehouses', label: 'Data Warehouses & Lakes', count: 8 },
-  { id: 'databases', label: 'Databases', count: 3 },
-  { id: 'transformations', label: 'Transformations & ETL', count: 4 },
+const ROADMAP_CONNECTORS = [
+  { id: 'databricks', label: 'Databricks', category: 'warehouses', color: '#FF3621', monogram: 'DB', desc: 'Unified lakehouse platform for data, AI and analytics.' },
+  { id: 's3', label: 'Amazon S3', category: 'warehouses', color: '#E05243', monogram: 'S3', desc: 'Object storage for raw data and backups.' },
+  { id: 'synapse', label: 'Azure Synapse', category: 'warehouses', color: '#0078D4', monogram: 'AS', desc: 'Analytics service for big data and warehousing.' },
+  { id: 'clickhouse', label: 'ClickHouse', category: 'warehouses', color: '#FFCC00', monogram: 'CH', desc: 'Fast open-source columnar database.' },
+  { id: 'iceberg', label: 'Apache Iceberg', category: 'warehouses', color: '#1B9AAA', monogram: 'IB', desc: 'High-performance open table format for analytic datasets.' },
+  { id: 'mongodb', label: 'MongoDB', category: 'databases', color: '#47A248', monogram: 'MG', desc: 'NoSQL document database.' },
+  { id: 'fivetran', label: 'Fivetran', category: 'transformations', color: '#0070F3', monogram: 'FV', desc: 'Managed data movement and replication.' },
+  { id: 'prefect', label: 'Prefect', category: 'transformations', color: '#00263E', monogram: 'PF', desc: 'Data orchestration for modern data stacks.' },
 ];
 
-export default function Integrations() {
-  const [activeTab, setActiveTab] = useState('directory'); // 'directory' (Tab 1) | 'connected' (Tab 2)
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+const CATEGORIES = [
+  { id: 'all', label: 'All' },
+  { id: 'warehouses', label: 'Data Warehouses & Lakes', subtitle: 'Warehouses, lakehouses and cloud storage.', Icon: Database },
+  { id: 'databases', label: 'Databases', subtitle: 'Operational and analytical databases.', Icon: Server },
+  { id: 'transformations', label: 'Transformations & ETL', subtitle: 'Transform, orchestrate and move data.', Icon: Sliders },
+];
 
-  // Live Backend Data
+const FORM_SCHEMAS = {
+  snowflake: [
+    { key: 'account_id', label: 'Account Identifier', required: true },
+    { key: 'warehouse_id', label: 'Warehouse', required: true },
+    { key: 'database_id', label: 'Database', required: true },
+    { key: 'schema', label: 'Schema', required: true },
+    { key: 'tables', label: 'Tables (comma-separated)', required: false },
+    { key: 'user_id', label: 'Username', required: true },
+    { key: 'sf_role', label: 'Role', required: false },
+    { key: 'secret', label: 'Password / Private Key', type: 'password', required: true },
+  ],
+  mysql: [
+    { key: 'host', label: 'Host', required: true },
+    { key: 'port', label: 'Port', required: true, placeholder: '3306' },
+    { key: 'database_id', label: 'Database', required: true },
+    { key: 'user_id', label: 'Username', required: true },
+    { key: 'secret', label: 'Password', type: 'password', required: true },
+  ],
+  postgres: [
+    { key: 'host', label: 'Host', required: true },
+    { key: 'port', label: 'Port', required: true, placeholder: '5432' },
+    { key: 'database_id', label: 'Database', required: true },
+    { key: 'schema', label: 'Schema', required: true },
+    { key: 'user_id', label: 'Username', required: true },
+    { key: 'secret', label: 'Password', type: 'password', required: true },
+  ],
+  redshift: [
+    { key: 'host', label: 'Cluster endpoint', required: true },
+    { key: 'port', label: 'Port', required: true, placeholder: '5439' },
+    { key: 'database_id', label: 'Database', required: true },
+    { key: 'schema', label: 'Schema', required: true },
+    { key: 'user_id', label: 'Username', required: true },
+    { key: 'secret', label: 'Password', type: 'password', required: true },
+  ],
+  bigquery: [
+    { key: 'project_id', label: 'GCP Project ID', required: true },
+    { key: 'dataset_id', label: 'Dataset ID', required: true },
+    { key: 'secret', label: 'Service Account JSON', type: 'textarea', required: true },
+  ],
+  dbt: [
+    { key: 'account_id', label: 'dbt Cloud Account ID', required: true },
+    { key: 'job_id', label: 'Job ID', required: true },
+    { key: 'project_name', label: 'Project Name', required: true },
+    { key: 'api_base', label: 'API Base URL', required: true },
+    { key: 'secret', label: 'API Token', type: 'password', required: true },
+  ],
+  dbt_cloud: [
+    { key: 'account_id', label: 'dbt Cloud Account ID', required: true },
+    { key: 'job_id', label: 'Job ID', required: true },
+    { key: 'project_name', label: 'Project Name', required: true },
+    { key: 'api_base', label: 'API Base URL', required: true },
+    { key: 'secret', label: 'API Token', type: 'password', required: true },
+  ],
+  airbyte: [
+    { key: 'api_url', label: 'Airbyte API URL', required: true },
+    { key: 'workspace_id', label: 'Workspace ID', required: true },
+    { key: 'secret', label: 'API Token', type: 'password', required: true },
+  ],
+  airflow: [
+    { key: 'webserver_url', label: 'Webserver URL', required: true },
+    { key: 'dag_id', label: 'DAG ID', required: true },
+    { key: 'user_id', label: 'Username', required: true },
+    { key: 'secret', label: 'Password / Token', type: 'password', required: true },
+  ],
+};
+
+const GENERIC_FIELDS = [
+  { key: 'host', label: 'Host / Endpoint', required: true },
+  { key: 'secret', label: 'Password / API Token', type: 'password', required: true },
+];
+
+const SECRET_KEYS = new Set(['secret', 'password', 'token', 'api_key', 'access_key_id']);
+
+function fieldsForType(id) {
+  return FORM_SCHEMAS[id] || GENERIC_FIELDS;
+}
+
+function metaFor(id, apiType) {
+  const known = CONNECTOR_META[id];
+  if (known) return { id, ...known, kind: apiType?.kind || known.kind };
+  const kind = apiType?.kind || 'database';
+  return {
+    id,
+    label: apiType?.label || id,
+    category: kind === 'etl' || kind === 'orchestrator' ? 'transformations' : 'databases',
+    kind,
+    color: '#64748B',
+    monogram: String(id).slice(0, 2).toUpperCase(),
+    desc: `${apiType?.label || id} connector.`,
+  };
+}
+
+function roleFromTool(tool) {
+  const explicit = (tool?.config?.role || tool?.role || '').toUpperCase();
+  if (explicit) return explicit;
+  // API often omits role on ETL tools — infer from kind / name
+  if (tool?.kind === 'etl' || tool?.kind === 'orchestrator') return 'ETL';
+  const name = String(tool?.name || '').toLowerCase();
+  if (name.includes('-etl') || name.endsWith('etl')) return 'ETL';
+  if (name.includes('source')) return 'SOURCE';
+  if (name.includes('target')) return 'TARGET';
+  return null;
+}
+
+function roleClass(role) {
+  const r = (role || '').toUpperCase();
+  if (r === 'SOURCE') return 'role-source';
+  if (r === 'TARGET') return 'role-target';
+  if (r === 'ETL' || r === 'TRANSFORM') return 'role-etl';
+  return 'role-default';
+}
+
+function parseAsset(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function configSummary(tool) {
+  const cfg = tool?.config || {};
+  const type = tool?.connector_type;
+  if (type === 'snowflake') {
+    return [cfg.database_id, cfg.schema, Array.isArray(cfg.tables) ? cfg.tables.join(', ') : cfg.tables]
+      .filter(Boolean).join(' · ') || cfg.account_id || '—';
+  }
+  if (type === 'dbt' || type === 'dbt_cloud') {
+    return [cfg.project_name, cfg.job_id ? `job ${cfg.job_id}` : null].filter(Boolean).join(' · ') || '—';
+  }
+  return cfg.database_id || cfg.host || cfg.project_id || '—';
+}
+
+function safeConfigEntries(config = {}) {
+  return Object.entries(config).filter(([k]) => {
+    const key = String(k).toLowerCase();
+    return !SECRET_KEYS.has(key) && key !== 'tool' && key !== 'connector_instance_id';
+  });
+}
+
+function extractSyncLogLines(res) {
+  const lines = [];
+  if (res == null) return lines;
+  if (typeof res === 'string') return [res];
+  const push = (v) => {
+    if (v == null) return;
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      lines.push(String(v));
+      return;
+    }
+    if (Array.isArray(v)) {
+      v.forEach((item) => {
+        if (typeof item === 'string') lines.push(item);
+        else if (item && typeof item === 'object') {
+          lines.push(item.message || item.detail || item.event || JSON.stringify(item));
+        }
+      });
+      return;
+    }
+    lines.push(JSON.stringify(v));
+  };
+  ['message', 'detail', 'status', 'ok'].forEach((k) => {
+    if (res[k] != null && typeof res[k] !== 'object') push(`${k}: ${res[k]}`);
+  });
+  ['run_id', 'sync_id', 'pipeline_id', 'pipeline_name', 'duration', 'assets_processed'].forEach((k) => {
+    if (res[k] != null) push(`${k}: ${res[k]}`);
+  });
+  ['logs', 'events', 'steps', 'items', 'output'].forEach((k) => {
+    if (res[k] != null) { push(`--- ${k} ---`); push(res[k]); }
+  });
+  if (!lines.length) push(JSON.stringify(res, null, 2));
+  return lines;
+}
+
+function toolLabel(tool) {
+  return tool ? `${tool.name} (${tool.connector_type || tool.kind || 'tool'})` : '—';
+}
+
+export default function Integrations() {
+  // Design B: operations first
+  const [tab, setTab] = useState('connected');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [actionMsg, setActionMsg] = useState(null);
+
   const [tools, setTools] = useState([]);
   const [pipelines, setPipelines] = useState([]);
-  const [activePipeline, setActivePipeline] = useState(null);
-  const [schemaData, setSchemaData] = useState(null);
+  const [connectorTypes, setConnectorTypes] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [bindings, setBindings] = useState([]);
+  const [focusPipelineId, setFocusPipelineId] = useState(null);
 
-  // Action States
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+
   const [testingToolId, setTestingToolId] = useState(null);
   const [testResults, setTestResults] = useState({});
   const [syncing, setSyncing] = useState(false);
-  const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncLogs, setSyncLogs] = useState([]);
-  const [syncProgress, setSyncProgress] = useState(0);
+  const [lastSyncOk, setLastSyncOk] = useState(null);
+  const [syncDrawerOpen, setSyncDrawerOpen] = useState(false);
 
-  // Modals
-  const [selectedConnectorForConnect, setSelectedConnectorForConnect] = useState(null);
-  const [connectorFormValues, setConnectorFormValues] = useState({});
-  const [connectionRole, setConnectionRole] = useState('SOURCE');
+  const [connectType, setConnectType] = useState(null);
   const [connectionName, setConnectionName] = useState('');
-  const [composeModalOpen, setComposeModalOpen] = useState(false);
-  const [selectedToolForInspection, setSelectedToolForInspection] = useState(null);
+  const [connectionRole, setConnectionRole] = useState('SOURCE');
+  const [formValues, setFormValues] = useState({});
+  const [savingTool, setSavingTool] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
-  // Compose Pipeline State
+  const [composeOpen, setComposeOpen] = useState(false);
   const [composeForm, setComposeForm] = useState({
     pipeline_name: '',
     source_tool_id: '',
     etl_tool_id: '',
     target_tool_id: '',
     make_active: true,
-    description: ''
+    description: '',
   });
+  const [composing, setComposing] = useState(false);
+  const [composeError, setComposeError] = useState(null);
+  const [inspectTool, setInspectTool] = useState(null);
+
+  const requestIdRef = useRef(0);
+  const syncLogRef = useRef(null);
 
   const loadData = useCallback(async () => {
+    const reqId = ++requestIdRef.current;
     setLoading(true);
+    setError(null);
     try {
-      const [toolsRes, schemaRes, pipesRes] = await Promise.allSettled([
+      const [toolsRes, pipesRes, typesRes, tmplRes] = await Promise.allSettled([
         fetchTools(),
-        fetchSchema(),
         fetchPipelines({ preset: 'all' }),
+        fetchConnectorTypes(),
+        fetchPipelineTemplates(),
       ]);
+      if (reqId !== requestIdRef.current) return;
 
       let toolList = [];
       if (toolsRes.status === 'fulfilled' && toolsRes.value) {
-        toolList = toolsRes.value.items || toolsRes.value.tools || (Array.isArray(toolsRes.value) ? toolsRes.value : []);
-        setTools(toolList);
-      }
-      if (schemaRes.status === 'fulfilled' && schemaRes.value) {
-        setSchemaData(schemaRes.value);
+        if (toolsRes.value.ok === false || toolsRes.value.error) {
+          setError(toolsRes.value.error || 'Tools API returned an error');
+        } else {
+          toolList = toolsRes.value.items || toolsRes.value.tools || [];
+          setTools(Array.isArray(toolList) ? toolList : []);
+        }
+      } else if (toolsRes.status === 'rejected') {
+        setError(toolsRes.reason?.response?.data?.error || toolsRes.reason?.message || 'Failed to load tools');
+        setTools([]);
       }
 
       let pipeList = [];
       if (pipesRes.status === 'fulfilled' && pipesRes.value) {
-        pipeList = pipesRes.value.items || pipesRes.value.pipelines || (Array.isArray(pipesRes.value) ? pipesRes.value : []);
-        setPipelines(pipeList);
-        const active = pipeList.find(p => p.is_sync_default || p.is_active) || pipeList[0] || null;
-        setActivePipeline(active);
-        if (active?.pipeline_id) {
-          const bindingsRes = await fetchPipelineBindings(active.pipeline_id).catch(() => null);
-          setBindings(bindingsRes?.items || bindingsRes?.bindings || []);
-        } else {
-          setBindings([]);
-        }
-        if (active?.pipeline_name) {
-          setComposeForm(prev => ({ ...prev, pipeline_name: active.pipeline_name }));
-        }
+        pipeList = pipesRes.value.items || pipesRes.value.pipelines || [];
+        setPipelines(Array.isArray(pipeList) ? pipeList : []);
+      } else setPipelines([]);
+
+      if (typesRes.status === 'fulfilled' && typesRes.value) {
+        const items = typesRes.value.items || typesRes.value.types || [];
+        setConnectorTypes(Array.isArray(items) ? items : []);
+      } else setConnectorTypes([]);
+
+      if (tmplRes.status === 'fulfilled' && tmplRes.value) {
+        const t = tmplRes.value.templates || tmplRes.value.items || [];
+        setTemplates(Array.isArray(t) ? t : []);
       }
 
-      // Initialize compose form defaults with real tool IDs
-      if (toolList.length > 0) {
-        const src = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'SOURCE')
-          || toolList.find(t => t.kind === 'database');
-        const etl = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'ETL' || t.kind === 'etl');
-        const tgt = toolList.find(t => (t.config?.role || t.role || '').toUpperCase() === 'TARGET')
-          || toolList.filter(t => t.kind === 'database' && t.tool_id !== src?.tool_id)[0];
+      const preferred =
+        pipeList.find(p => p.is_sync_default) ||
+        pipeList.find(p => p.is_active) ||
+        pipeList[0] || null;
 
+      setFocusPipelineId(prev => {
+        if (prev && pipeList.some(p => p.pipeline_id === prev)) return prev;
+        return preferred?.pipeline_id || null;
+      });
+
+      if (toolList.length) {
+        const src = toolList.find(t => roleFromTool(t) === 'SOURCE') || toolList.find(t => t.kind === 'database');
+        const etl = toolList.find(t => roleFromTool(t) === 'ETL' || t.kind === 'etl');
+        const tgt = toolList.find(t => roleFromTool(t) === 'TARGET')
+          || toolList.filter(t => t.kind === 'database' && t.tool_id !== src?.tool_id)[0];
         setComposeForm(prev => ({
           ...prev,
-          source_tool_id: src ? src.tool_id : (toolList[0]?.tool_id || ''),
-          etl_tool_id: etl ? etl.tool_id : (toolList.find(t => t.kind === 'etl')?.tool_id || ''),
-          target_tool_id: tgt ? tgt.tool_id : '',
+          pipeline_name: prev.pipeline_name || preferred?.pipeline_name || '',
+          source_tool_id: prev.source_tool_id || src?.tool_id || '',
+          etl_tool_id: prev.etl_tool_id || etl?.tool_id || '',
+          target_tool_id: prev.target_tool_id || tgt?.tool_id || '',
         }));
       }
     } catch (e) {
-      console.error('Failed to load integrations:', e);
+      if (reqId !== requestIdRef.current) return;
+      setError(e.message || 'Failed to load integrations');
     } finally {
-      setLoading(false);
+      if (reqId === requestIdRef.current) setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  // Live Test Tool Connection Trigger
-  const handleTestConnection = async (toolId) => {
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBindings() {
+      if (!focusPipelineId) { setBindings([]); return; }
+      try {
+        const bRes = await fetchPipelineBindings(focusPipelineId);
+        if (cancelled) return;
+        const items = bRes?.items || bRes?.bindings || [];
+        setBindings(Array.isArray(items) ? items : []);
+      } catch {
+        if (!cancelled) setBindings([]);
+      }
+    }
+    loadBindings();
+    return () => { cancelled = true; };
+  }, [focusPipelineId]);
+
+  const focusPipeline = useMemo(
+    () => pipelines.find(p => p.pipeline_id === focusPipelineId) || null,
+    [pipelines, focusPipelineId]
+  );
+
+  const bindingsByRole = useMemo(() => {
+    const map = { SOURCE: null, ETL: null, TARGET: null };
+    bindings.forEach((b) => {
+      const role = (b.role || '').toUpperCase();
+      if (role in map) map[role] = b;
+    });
+    return map;
+  }, [bindings]);
+
+  const apiTypeById = useMemo(() => {
+    const map = new Map();
+    connectorTypes.forEach((t) => { if (t?.id) map.set(t.id, t); });
+    return map;
+  }, [connectorTypes]);
+
+  const directoryEntries = useMemo(() => {
+    const entries = [];
+    const seen = new Set();
+    connectorTypes.forEach((t) => {
+      if (!t?.id || seen.has(t.id)) return;
+      if (t.id === 'dbt_cloud' && apiTypeById.has('dbt')) return;
+      seen.add(t.id);
+      entries.push({ ...metaFor(t.id, t), kind: t.kind, apiSupported: true });
+    });
+    ROADMAP_CONNECTORS.forEach((r) => {
+      if (seen.has(r.id)) return;
+      seen.add(r.id);
+      entries.push({ ...r, apiSupported: false });
+    });
+    return entries;
+  }, [connectorTypes, apiTypeById]);
+
+  const filteredDirectory = useMemo(() => {
+    let list = directoryEntries;
+    if (categoryFilter !== 'all') list = list.filter(c => c.category === categoryFilter);
+    if (!search.trim()) return list;
+    const q = search.toLowerCase();
+    return list.filter(c => [c.id, c.label, c.desc].filter(Boolean).join(' ').toLowerCase().includes(q));
+  }, [directoryEntries, categoryFilter, search]);
+
+  const groupedDirectory = useMemo(() => (
+    CATEGORIES.filter(c => c.id !== 'all')
+      .map(cat => ({ ...cat, items: filteredDirectory.filter(e => e.category === cat.id) }))
+      .filter(g => g.items.length)
+  ), [filteredDirectory]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = { all: directoryEntries.length, warehouses: 0, databases: 0, transformations: 0 };
+    directoryEntries.forEach((e) => { if (counts[e.category] != null) counts[e.category] += 1; });
+    return counts;
+  }, [directoryEntries]);
+
+  const connectedCountByType = useMemo(() => {
+    const map = {};
+    tools.forEach((t) => {
+      if (!t.connector_type) return;
+      map[t.connector_type] = (map[t.connector_type] || 0) + 1;
+    });
+    return map;
+  }, [tools]);
+
+  const filteredTools = useMemo(() => {
+    if (!search.trim() || tab !== 'connected') return tools;
+    const q = search.toLowerCase();
+    return tools.filter(t =>
+      [t.name, t.connector_type, t.kind, roleFromTool(t), configSummary(t)]
+        .filter(Boolean).join(' ').toLowerCase().includes(q)
+    );
+  }, [tools, search, tab]);
+
+  const dbTools = tools.filter(t => t.kind === 'database');
+  const etlTools = tools.filter(t => t.kind === 'etl' || t.kind === 'orchestrator');
+  const dash = (v) => (v == null || v === '' ? '—' : v);
+
+  const openConnect = (entry) => {
+    if (!entry?.apiSupported) {
+      setActionMsg(`${entry?.label || entry?.id} is on the roadmap — not available from the API yet.`);
+      return;
+    }
+    const type = apiTypeById.get(entry.id) || { id: entry.id, label: entry.label, kind: entry.kind || 'database' };
+    setConnectType(type);
+    setConnectionName(`${entry.id}-connector`);
+    setConnectionRole(type.kind === 'etl' || type.kind === 'orchestrator' ? 'ETL' : 'SOURCE');
+    setFormValues({});
+    setSaveError(null);
+  };
+
+  const handleSaveTool = async (e) => {
+    e.preventDefault();
+    if (!connectType) return;
+    setSavingTool(true);
+    setSaveError(null);
+    try {
+      const fields = fieldsForType(connectType.id);
+      const missing = fields.filter(f => f.required && !String(formValues[f.key] || '').trim());
+      if (missing.length) {
+        setSaveError(`Required: ${missing.map(m => m.label).join(', ')}`);
+        setSavingTool(false);
+        return;
+      }
+      if (!connectionName.trim()) {
+        setSaveError('Connection name is required');
+        setSavingTool(false);
+        return;
+      }
+      const cfg = { ...formValues, role: connectionRole };
+      if (cfg.tables && typeof cfg.tables === 'string') {
+        cfg.tables = cfg.tables.split(',').map(t => t.trim()).filter(Boolean);
+      }
+      const secret = formValues.secret;
+      if (!secret) {
+        setSaveError('Secret / credential is required');
+        setSavingTool(false);
+        return;
+      }
+      const { secret: _s, ...configWithoutSecret } = cfg;
+      await createTool({
+        name: connectionName.trim(),
+        connector_type: connectType.id,
+        kind: connectType.kind,
+        secret,
+        config: configWithoutSecret,
+      });
+      setConnectType(null);
+      setActionMsg(`Registered “${connectionName.trim()}”.`);
+      setTab('connected');
+      await loadData();
+    } catch (err) {
+      setSaveError(err?.response?.data?.detail || err?.response?.data?.error || err.message || 'Failed to register');
+    } finally {
+      setSavingTool(false);
+    }
+  };
+
+  const handleTest = async (toolId) => {
     setTestingToolId(toolId);
+    const testedAt = new Date().toISOString();
     try {
       const res = await testToolConnection(toolId);
       setTestResults(prev => ({
         ...prev,
-        [toolId]: { ok: true, msg: res.message || 'Connected successfully (Verified)' }
+        [toolId]: { ok: true, msg: res?.message || res?.detail || 'Connection verified', testedAt },
       }));
-    } catch (e) {
+    } catch (err) {
       setTestResults(prev => ({
         ...prev,
-        [toolId]: { ok: false, msg: e.response?.data?.detail || e.message || 'Connection test failed' }
+        [toolId]: {
+          ok: false,
+          msg: err?.response?.data?.detail || err?.response?.data?.error || err.message || 'Test failed',
+          testedAt,
+        },
       }));
     } finally {
       setTestingToolId(null);
     }
   };
 
-  // Real sync — logs come from API response only
-  const handleStartLiveSync = async () => {
-    setSyncModalOpen(true);
+  const handleSync = async () => {
+    if (!focusPipeline) {
+      setActionMsg('Select a pipeline before syncing.');
+      return;
+    }
     setSyncing(true);
-    setSyncProgress(20);
-    const pipeName = activePipeline?.pipeline_name;
-    const pipeId = activePipeline?.pipeline_id;
+    setActionMsg(null);
+    setLastSyncOk(null);
+    setSyncDrawerOpen(true);
+    const stamp = () => new Date().toLocaleTimeString();
     setSyncLogs([
-      `[${new Date().toLocaleTimeString()}] [INIT] Starting sync${pipeName ? ` for ${pipeName}` : ''}...`,
+      `[${stamp()}] INIT sync · ${focusPipeline.pipeline_name}`,
+      `[${stamp()}] pipeline_id=${focusPipeline.pipeline_id}`,
+      `[${stamp()}] POST /v1/sync { refresh_db: true }`,
     ]);
-
     try {
-      const payload = { refresh_db: true };
-      if (pipeId) payload.pipeline_id = pipeId;
-      else if (pipeName) payload.pipeline_name = pipeName;
-
-      setSyncProgress(55);
-      const res = await triggerSync(payload);
-      setSyncProgress(100);
-      setSyncLogs(prev => [
-        ...prev,
-        `[${new Date().toLocaleTimeString()}] [OK] ${res?.message || JSON.stringify(res) || 'Sync completed'}`,
-      ]);
-      setSyncing(false);
-      loadData();
-    } catch (e) {
-      setSyncProgress(100);
-      setSyncLogs(prev => [
-        ...prev,
-        `[${new Date().toLocaleTimeString()}] [ERROR] Sync failed: ${e.response?.data?.detail || e.message}`,
-      ]);
-      setSyncing(false);
-    }
-  };
-
-  // Open Connector Modal with dynamic field schema
-  const handleOpenConnect = (connectorKey) => {
-    const schema = CONNECTOR_SCHEMAS[connectorKey] || {
-      name: connectorKey,
-      icon: '🔌',
-      kind: 'database',
-      category: 'warehouses',
-      desc: 'Connect to external data system.',
-      fields: [
-        { key: 'host', label: 'Host / Endpoint', placeholder: 'e.g. server.company.internal', required: true },
-        { key: 'database_id', label: 'Database Name', placeholder: 'e.g. analytics', required: true },
-        { key: 'user_id', label: 'Username / Key ID', placeholder: 'e.g. admin', required: true },
-        { key: 'secret', label: 'Password / API Token', type: 'password', placeholder: '••••••••', required: true }
-      ]
-    };
-
-    setSelectedConnectorForConnect({ key: connectorKey, ...schema });
-    setConnectionName(`${connectorKey}-connector`);
-    setConnectionRole(schema.kind === 'etl' ? 'ETL' : 'SOURCE');
-    setConnectorFormValues({});
-  };
-
-  // Submit New Tool Registration to API
-  const handleSaveTool = async (e) => {
-    e.preventDefault();
-    if (!selectedConnectorForConnect) return;
-
-    try {
-      const cfg = { ...connectorFormValues };
-      if (cfg.tables && typeof cfg.tables === 'string') {
-        cfg.tables = cfg.tables.split(',').map(t => t.trim());
-      }
-      cfg.role = connectionRole;
-
-      const payload = {
-        name: connectionName || `${selectedConnectorForConnect.key}-conn`,
-        connector_type: selectedConnectorForConnect.key,
-        kind: selectedConnectorForConnect.kind,
-        secret: connectorFormValues.secret || 'default_secret',
-        config: cfg
-      };
-
-      const res = await createTool(payload);
-      setSelectedConnectorForConnect(null);
+      const res = await triggerSync({ refresh_db: true, pipeline_id: focusPipeline.pipeline_id });
+      const extracted = extractSyncLogLines(res).map(l => `[${stamp()}] ${l}`);
+      setSyncLogs(prev => [...prev, ...(extracted.length ? extracted : [`[${stamp()}] Sync completed`]), `[${stamp()}] DONE`]);
+      setLastSyncOk(true);
+      setActionMsg(res?.message || `Sync completed for ${focusPipeline.pipeline_name}.`);
       await loadData();
-      setActiveTab('connected');
-
-      if (res && res.tool_id) {
-        handleTestConnection(res.tool_id);
-      }
     } catch (err) {
-      alert(err.response?.data?.detail || err.message || 'Failed to register tool');
+      const detail = err?.response?.data;
+      const errLines = extractSyncLogLines(detail).map(l => `[${stamp()}] ${l}`);
+      setSyncLogs(prev => [
+        ...prev,
+        `[${stamp()}] ERROR HTTP ${err?.response?.status || '—'}`,
+        ...(errLines.length ? errLines : [`[${stamp()}] ${err.message || 'Sync failed'}`]),
+      ]);
+      setLastSyncOk(false);
+      setActionMsg(detail?.detail || detail?.error || err.message || 'Sync failed');
+    } finally {
+      setSyncing(false);
+      requestAnimationFrame(() => {
+        if (syncLogRef.current) syncLogRef.current.scrollTop = syncLogRef.current.scrollHeight;
+      });
     }
   };
 
-  // Submit Compose Pipeline to API
-  const handleComposePipelineSubmit = async (e) => {
+  const handleCompose = async (e) => {
     e.preventDefault();
+    setComposing(true);
+    setComposeError(null);
     try {
-      const payload = {
-        pipeline_name: composeForm.pipeline_name,
+      if (!composeForm.pipeline_name.trim()) {
+        setComposeError('Pipeline name is required');
+        setComposing(false);
+        return;
+      }
+      if (!composeForm.source_tool_id || !composeForm.etl_tool_id || !composeForm.target_tool_id) {
+        setComposeError('Source, ETL, and Target are required');
+        setComposing(false);
+        return;
+      }
+      await createPipelineFromTools({
+        pipeline_name: composeForm.pipeline_name.trim(),
         source_tool_id: composeForm.source_tool_id,
         etl_tool_id: composeForm.etl_tool_id,
         target_tool_id: composeForm.target_tool_id,
-        make_active: composeForm.make_active,
-        description: composeForm.description
-      };
-      await createPipelineFromTools(payload);
-      setComposeModalOpen(false);
+        make_active: Boolean(composeForm.make_active),
+        description: composeForm.description || '',
+      });
+      setComposeOpen(false);
+      setActionMsg(`Pipeline “${composeForm.pipeline_name.trim()}” created.`);
+      setTab('connected');
       await loadData();
-      handleStartLiveSync();
     } catch (err) {
-      setComposeModalOpen(false);
+      setComposeError(err?.response?.data?.detail || err?.response?.data?.error || err.message || 'Compose failed');
+    } finally {
+      setComposing(false);
     }
   };
-
-  // Filtered Catalog for Directory View
-  const filteredCatalog = useMemo(() => {
-    return Object.entries(CONNECTOR_SCHEMAS).map(([key, item]) => ({ key, ...item })).filter(c => {
-      const matchSearch = !search ||
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.desc.toLowerCase().includes(search.toLowerCase()) ||
-        c.category.toLowerCase().includes(search.toLowerCase());
-      const matchCategory = categoryFilter === 'all' || c.category === categoryFilter;
-      return matchSearch && matchCategory;
-    });
-  }, [search, categoryFilter]);
-
-  // Grouped by Category
-  const groupedDirectory = useMemo(() => {
-    const groups = {
-      warehouses: { title: 'Data Warehouses & Lakes', desc: 'Connect your data warehouses, lakehouses and cloud storage.', items: [] },
-      databases: { title: 'Databases', desc: 'Connect to your operational and analytical databases.', items: [] },
-      transformations: { title: 'Transformations & ETL', desc: 'Orchestrate, transform and move your data across systems.', items: [] },
-    };
-
-    filteredCatalog.forEach(c => {
-      if (groups[c.category]) {
-        groups[c.category].items.push(c);
-      }
-    });
-
-    return Object.entries(groups).filter(([_, grp]) => grp.items.length > 0);
-  }, [filteredCatalog]);
 
   return (
     <div className="fade-in">
       <PageHeader
         title="Integrations"
-        subtitle={activeTab === 'directory'
-          ? "Explore and connect your data sources, transformation engines, and destination data marts."
-          : "Manage your live data connections, inspect schema structures, test credentials, and compose data pipelines."
-        }
+        subtitle="Pipeline board first — then connection cards. Directory is only for adding connectors."
         onRefresh={loadData}
       />
 
       <div className="page-body">
-        {/* Navigation Tabs (Tab 1: Connector Directory | Tab 2: Connected Systems & Pipeline Topology) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 16 }}>
+        <div className="integration-tabs">
           <button
-            className={`tab-pill-btn ${activeTab === 'directory' ? 'active' : ''}`}
-            onClick={() => setActiveTab('directory')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 8,
-              fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer',
-              background: activeTab === 'directory' ? 'var(--sidebar-bg-active)' : 'transparent',
-              color: activeTab === 'directory' ? 'var(--brand-dark)' : 'var(--text-secondary)'
-            }}
+            type="button"
+            className={`integration-tab${tab === 'connected' ? ' is-active' : ''}`}
+            onClick={() => setTab('connected')}
           >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeTab === 'directory' ? '#10B981' : '#94A3B8', display: 'inline-block' }} />
-            Connector Directory ({Object.keys(CONNECTOR_SCHEMAS).length})
+            <span className="integration-tab-dot" />
+            <Network size={14} />
+            Connected Systems ({tools.length})
           </button>
-
           <button
-            className={`tab-pill-btn ${activeTab === 'connected' ? 'active' : ''}`}
-            onClick={() => setActiveTab('connected')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 8,
-              fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer',
-              background: activeTab === 'connected' ? 'var(--sidebar-bg-active)' : 'transparent',
-              color: activeTab === 'connected' ? 'var(--brand-dark)' : 'var(--text-secondary)'
-            }}
+            type="button"
+            className={`integration-tab${tab === 'catalog' ? ' is-active' : ''}`}
+            onClick={() => setTab('catalog')}
           >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeTab === 'connected' ? '#10B981' : '#94A3B8', display: 'inline-block' }} />
-            Connected Systems & Compose ({tools.length})
+            <span className="integration-tab-dot" />
+            Connector Directory ({directoryEntries.length})
           </button>
         </div>
 
-        {/* ── TAB 1: CONNECTOR DIRECTORY (First Tab) ────────────────────────────── */}
-        {activeTab === 'directory' && (
-          <>
-            {/* Search & Category Filter Pills */}
-            <div className="filters-bar" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className="search-box" style={{ width: '100%', maxWidth: '100%' }}>
-                <Search size={14} />
-                <input
-                  type="text"
-                  placeholder="Search connectors by name, technology or category (e.g. Snowflake, Databricks, BigQuery, Postgres)..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
-
-              {/* Category Pills */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {CATEGORIES.map(cat => (
-                  <button
-                    key={cat.id}
-                    className={`category-pill ${categoryFilter === cat.id ? 'active' : ''}`}
-                    onClick={() => setCategoryFilter(cat.id)}
-                    style={{
-                      padding: '5px 14px', borderRadius: 99, fontSize: 12, fontWeight: 500,
-                      border: '1px solid var(--border)', cursor: 'pointer',
-                      background: categoryFilter === cat.id ? '#10B981' : 'var(--bg-card)',
-                      color: categoryFilter === cat.id ? '#FFFFFF' : 'var(--text-secondary)'
-                    }}
-                  >
-                    {cat.label} ({cat.count})
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Categorized Connector Sections */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
-              {groupedDirectory.map(([catKey, grp]) => (
-                <div key={catKey} className="card" style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {catKey === 'warehouses' ? <Database size={16} color="#3B82F6" /> :
-                         catKey === 'transformations' ? <Sliders size={16} color="#FF694B" /> :
-                         <Server size={16} color="#10B981" />}
-                        <span style={{ fontWeight: 700, fontSize: 14 }}>{grp.title}</span>
-                      </div>
-                      <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{grp.desc}</span>
-                    </div>
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                      {grp.items.length} connectors &rsaquo;
-                    </span>
-                  </div>
-
-                  {/* Grid of Connectors */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
-                    gap: 12
-                  }}>
-                    {grp.items.map(tool => (
-                      <div
-                        key={tool.key}
-                        style={{
-                          padding: 14, borderRadius: 8, border: '1px solid var(--border)',
-                          background: 'var(--bg-card-subtle)', display: 'flex', flexDirection: 'column',
-                          justifyContent: 'space-between', height: 165
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                            <div style={{ fontSize: 22 }}>{tool.icon}</div>
-                            <span style={{
-                              fontSize: 10, fontWeight: 600, color: '#047857', background: '#ECFDF5',
-                              padding: '2px 6px', borderRadius: 99
-                            }}>
-                              ● Available
-                            </span>
-                          </div>
-
-                          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>{tool.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.3 }}>
-                            {tool.desc}
-                          </div>
-                        </div>
-
-                        <button
-                          className="connector-connect-btn"
-                          onClick={() => handleOpenConnect(tool.key)}
-                        >
-                          <span>Connect</span>
-                          <ArrowRight size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
+        {error && (
+          <div style={{
+            padding: '12px 14px', marginBottom: 14, borderRadius: 8,
+            background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 13
+          }}>
+            <strong>Cannot load Integrations.</strong> {error}
+          </div>
         )}
 
-        {/* ── TAB 2: CONNECTED SYSTEMS & COMPOSE (Second Tab) ───────────────────── */}
-        {activeTab === 'connected' && (
-          <>
-            {/* Top 4 KPI Summary Cards */}
-            <div className="kpi-grid-4">
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                    <Server size={18} />
+        {actionMsg && (
+          <div style={{
+            padding: '10px 12px', marginBottom: 12, borderRadius: 8, fontSize: 12.5,
+            background: /fail/i.test(actionMsg) ? '#FEF2F2' : /roadmap/i.test(actionMsg) ? '#FFFBEB' : '#ECFDF5',
+            border: `1px solid ${/fail/i.test(actionMsg) ? '#FECACA' : /roadmap/i.test(actionMsg) ? '#FDE68A' : '#A7F3D0'}`,
+            color: /fail/i.test(actionMsg) ? '#B91C1C' : /roadmap/i.test(actionMsg) ? '#92400E' : '#065F46',
+            display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center'
+          }}>
+            <span>{actionMsg}</span>
+            <button type="button" className="icon-btn" onClick={() => setActionMsg(null)}><X size={14} /></button>
+          </div>
+        )}
+
+        {loading && !tools.length && !connectorTypes.length && !error ? (
+          <LoadingSpinner />
+        ) : (
+          <div style={{ opacity: loading ? 0.75 : 1, transition: 'opacity 0.15s ease' }}>
+
+            {/* ═══════════════ CONNECTED (primary) ═══════════════ */}
+            {tab === 'connected' && (
+              <>
+                {/* HERO: composition first — clearly different from old table-first layout */}
+                <section className="integration-hero">
+                  <div className="integration-hero-top">
+                    <div>
+                      <div className="integration-hero-kicker">Active pipeline</div>
+                      <h3 className="integration-hero-title">
+                        {focusPipeline ? focusPipeline.pipeline_name : 'No pipeline selected'}
+                      </h3>
+                      {focusPipeline && (
+                        <p className="integration-hero-meta">
+                          {dash(focusPipeline.status)} · Last run {dash(focusPipeline.last_run_age)} ·{' '}
+                          {focusPipeline.is_sync_default ? 'Sync default' : 'Not sync default'}
+                        </p>
+                      )}
+                    </div>
+                    <div className="integration-hero-actions">
+                      <select
+                        className="select-control"
+                        value={focusPipelineId || ''}
+                        onChange={e => setFocusPipelineId(e.target.value || null)}
+                      >
+                        {pipelines.length === 0 && <option value="">No pipelines</option>}
+                        {pipelines.map(p => (
+                          <option key={p.pipeline_id} value={p.pipeline_id}>
+                            {p.pipeline_name}{p.is_sync_default ? ' ★' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" className="export-btn" onClick={() => setComposeOpen(true)} disabled={!tools.length}>
+                        <GitBranch size={13} /> {focusPipeline ? 'Recompose' : 'Compose'}
+                      </button>
+                      <button
+                        type="button"
+                        className="integration-hero-sync"
+                        onClick={handleSync}
+                        disabled={syncing || !focusPipeline}
+                      >
+                        <RefreshCw size={14} className={syncing ? 'spin' : ''} />
+                        {syncing ? 'Syncing…' : 'Run sync'}
+                      </button>
+                      {syncLogs.length > 0 && (
+                        <button type="button" className="export-btn" onClick={() => setSyncDrawerOpen(true)}>
+                          Sync logs
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="kpi-label">Connected Tools</span>
-                </div>
-                <div className="kpi-value">{tools.length}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {(() => {
-                    const counts = {};
-                    tools.forEach(t => {
-                      const k = t.connector_type || t.kind || 'tool';
-                      counts[k] = (counts[k] || 0) + 1;
-                    });
-                    const parts = Object.entries(counts).map(([k, n]) => `${n} ${k}`);
-                    return parts.length ? parts.join(' • ') : 'No tools connected';
-                  })()}
-                </div>
-              </div>
 
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#EEF2FF', color: '#6366F1' }}>
-                    <Shield size={18} />
-                  </div>
-                  <span className="kpi-label">Healthy Connections</span>
-                </div>
-                <div className="kpi-value" style={{ color: '#10B981' }}>
-                  {tools.length
-                    ? `${Math.round((tools.filter(t => (t.status || '').toLowerCase() === 'active').length / tools.length) * 100)}%`
-                    : '—'}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Based on tool status from API
-                </div>
-              </div>
-
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#EFF6FF', color: '#3B82F6' }}>
-                    <Clock size={18} />
-                  </div>
-                  <span className="kpi-label">Last Sync (Latest)</span>
-                </div>
-                <div className="kpi-value">21m ago</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Most recent pipeline sync
-                </div>
-              </div>
-
-              <div className="kpi-card">
-                <div className="kpi-card-header">
-                  <div className="kpi-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                    <Zap size={18} />
-                  </div>
-                  <span className="kpi-label">Avg. Latency</span>
-                </div>
-                <div className="kpi-value">1.1s</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Across all connections
-                </div>
-              </div>
-            </div>
-
-            {/* Connected Tools & Pipeline Composition Actions */}
-            <div className="card mt-4">
-              <div className="card-header">
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }} />
-                    <span className="card-title">Connected Tools & Pipelines</span>
-                  </div>
-                  <span className="card-subtitle">
-                    Registered connections powering the data observability pipeline. Click any tool row to inspect its live data schema structure.
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <button
-                    className="export-btn"
-                    onClick={() => setComposeModalOpen(true)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, padding: '7px 14px' }}
-                  >
-                    <Network size={14} color="#10B981" />
-                    <span>Compose Pipeline</span>
-                  </button>
-
-                  <button
-                    className="export-btn"
-                    onClick={handleStartLiveSync}
-                    disabled={syncing}
-                    style={{ background: '#10B981', color: '#FFFFFF', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, padding: '7px 14px' }}
-                  >
-                    <RefreshCw size={14} className={syncing ? 'spin' : ''} />
-                    <span>{syncing ? 'Syncing...' : 'Sync All'}</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="table-wrapper">
-                <table className="vithi-table">
-                  <thead>
-                    <tr>
-                      <th>Tool Name & Schema</th>
-                      <th>Type</th>
-                      <th>Pipeline Role</th>
-                      <th>Configuration & Asset Binding</th>
-                      <th>Status</th>
-                      <th>Last Tested</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tools.map((tool, idx) => {
-                      const isSnowflake = tool.connector_type === 'snowflake';
-                      const isDbt = tool.connector_type === 'dbt';
-                      const tResult = testResults[tool.tool_id];
-
-                      let role = tool.config?.role || tool.role || (idx === 0 ? 'SOURCE' : idx === 1 ? 'TARGET' : 'ETL');
-                      let roleBg = role === 'SOURCE' ? '#ECFDF5' : role === 'TARGET' ? '#EEF2FF' : '#FEF3C7';
-                      let roleColor = role === 'SOURCE' ? '#047857' : role === 'TARGET' ? '#4338CA' : '#B45309';
-
-                      const tables = Array.isArray(tool.config?.tables) ? tool.config.tables : [];
-                      const datasetName = tables[0] || tool.config?.schema || tool.config?.project_name || tool.name || '—';
-
-                      return (
-                        <tr
-                          key={tool.tool_id || idx}
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => setSelectedToolForInspection({ tool, role, datasetName })}
-                        >
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div style={{
-                                width: 36, height: 36, borderRadius: 8,
-                                background: isSnowflake ? 'rgba(41, 181, 232, 0.12)' : 'rgba(255, 105, 75, 0.12)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18
-                              }}>
-                                {isSnowflake ? '❄️' : '🟧'}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span>{tool.name}</span>
-                                  <Eye size={12} style={{ color: 'var(--text-muted)' }} title="Click to inspect schema structure" />
-                                </div>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                  {tool.config?.schema
-                                    ? `${tool.config.database_id || '—'}.${tool.config.schema}.${datasetName}`
-                                    : (tool.config?.job_id ? `Job #${tool.config.job_id}` : (tool.connection_id || '—'))}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td>
-                            <span style={{
-                              padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                              background: isSnowflake ? '#EFF6FF' : '#FFF7ED',
-                              color: isSnowflake ? '#2563EB' : '#EA580C'
-                            }}>
-                              {isSnowflake ? 'Snowflake' : 'dbt Cloud'}
-                            </span>
-                          </td>
-
-                          <td>
-                            <span style={{
-                              padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-                              background: roleBg, color: roleColor, letterSpacing: '0.04em'
-                            }}>
-                              {role}
-                            </span>
-                          </td>
-
-                          <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                            {isSnowflake ? (
-                              <div>
-                                <div><strong style={{ color: 'var(--text-primary)' }}>Account:</strong> {tool.config?.account_id || 'nh02575.ap-southeast-7.aws'}</div>
-                                <div>Warehouse: <code>{tool.config?.warehouse_id || '—'}</code> &bull; Table: <strong style={{ color: 'var(--brand-dark)' }}>{datasetName}</strong></div>
-                              </div>
-                            ) : (
-                              <div>
-                                <div><strong style={{ color: 'var(--text-primary)' }}>Account:</strong> {tool.config?.account_id || '—'}</div>
-                                <div>Project: <code>{tool.config?.project_name || '—'}</code> &bull; Job: <strong>{tool.config?.job_id || '—'}</strong></div>
-                              </div>
-                            )}
-                          </td>
-
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <span className="status-pill good" style={{ alignSelf: 'flex-start' }}>
-                                ● Verified Connected
+                  {!focusPipeline ? (
+                    <div className="integration-hero-empty">
+                      Compose SOURCE → ETL → TARGET from your connections to activate this board.
+                    </div>
+                  ) : (
+                    <div className="integration-arch-flow integration-hero-flow">
+                      {[
+                        { role: 'SOURCE', label: '1 · SOURCE', accent: 'source' },
+                        { role: 'ETL', label: '2 · TRANSFORM', accent: 'etl' },
+                        { role: 'TARGET', label: '3 · TARGET', accent: 'target' },
+                      ].map((step, idx) => {
+                        const b = bindingsByRole[step.role];
+                        const asset = parseAsset(b?.asset_selector_json);
+                        return (
+                          <div key={step.role} className="integration-arch-node">
+                            {idx > 0 && <ArrowRight size={20} className="integration-arch-arrow" />}
+                            <div className={`integration-arch-card is-${step.accent}`}>
+                              <span className={`integration-role-badge ${roleClass(step.role)}`}>
+                                {step.label}
+                                {b?.connector_type ? ` · ${b.connector_type}` : ''}
                               </span>
-                              {tResult && (
-                                <span style={{ fontSize: 10.5, color: tResult.ok ? '#10B981' : '#EF4444', fontWeight: 500 }}>
-                                  {tResult.msg}
-                                </span>
+                              <div className="integration-arch-name">
+                                {b ? dash(b.instance_name) : 'Not bound'}
+                              </div>
+                              {asset && (
+                                <div className="integration-arch-meta">
+                                  {asset.schema ? <div>Schema: {asset.schema}</div> : null}
+                                  {Array.isArray(asset.tables) && asset.tables.length > 0 && (
+                                    <div>Tables: {asset.tables.join(', ')}</div>
+                                  )}
+                                </div>
                               )}
                             </div>
-                          </td>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
 
-                          <td style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                            <div>{idx === 0 ? '21m ago' : idx === 1 ? '19m ago' : '18m ago'}</div>
-                            <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>May 11, 12:30 PM</div>
-                          </td>
-
-                          <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <button
-                                className="export-btn"
-                                onClick={() => handleTestConnection(tool.tool_id)}
-                                disabled={testingToolId === tool.tool_id}
-                                style={{ padding: '4px 10px', fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                title="Test live credentials"
-                              >
-                                <Zap size={12} color="#6366F1" className={testingToolId === tool.tool_id ? 'spin' : ''} />
-                                {testingToolId === tool.tool_id ? 'Testing...' : 'Test'}
-                              </button>
-
-                              <button
-                                className="export-btn"
-                                onClick={() => setSelectedToolForInspection({ tool, role, datasetName })}
-                                style={{ padding: '4px 8px', fontSize: 11.5 }}
-                                title="View schema columns & metadata"
-                              >
-                                <Table size={12} /> Schema
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* 3-Tier Pipeline Composition Topology Diagram */}
-            <div className="card mt-4" style={{ padding: '18px 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Network size={16} color="#10B981" />
-                    <span style={{ fontWeight: 700, fontSize: 14 }}>Active Pipeline Composition Architecture</span>
-                  </div>
-                  <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                    {activePipeline
-                      ? <>Pipeline <strong>{activePipeline.pipeline_name}</strong> (ID: <code>{activePipeline.pipeline_id}</code>)</>
-                      : 'No active pipeline from API'}
-                  </span>
-                </div>
-                <button
-                  className="export-btn"
-                  onClick={() => setComposeModalOpen(true)}
-                  style={{ fontSize: 11.5, padding: '4px 10px' }}
-                >
-                  <Edit2 size={12} /> Recompose Pipeline
-                </button>
-              </div>
-
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '20px 24px', background: 'var(--bg-card-subtle)', borderRadius: 10,
-                border: '1px solid var(--border)', flexWrap: 'wrap', gap: 16
-              }}>
-                {/* 1. SOURCE NODE */}
-                <div style={{
-                  flex: '1 1 220px', padding: 14, borderRadius: 8, background: 'var(--bg-card)',
-                  border: '1px solid #A7F3D0', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.05)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4 }}>
-                      1. SOURCE (Snowflake)
-                    </span>
-                    <span style={{ fontSize: 16 }}>❄️</span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
-                    {activePipeline?.source || tools.find(t => (t.config?.role || '').toUpperCase() === 'SOURCE')?.name || 'Source'}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    Instance: <code>{tools.find(t => (t.config?.role || '').toUpperCase() === 'SOURCE')?.name || '—'}</code>
-                  </div>
-                  <div style={{ fontSize: 10.5, color: '#10B981', marginTop: 4, fontWeight: 600 }}>
-                    ● {tools.filter(t => t.kind === 'database').length} database tool(s)
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-                  <ArrowRight size={22} />
-                </div>
-
-                {/* 2. ETL ENGINE NODE */}
-                <div style={{
-                  flex: '1 1 220px', padding: 14, borderRadius: 8, background: 'var(--bg-card)',
-                  border: '1px solid #FED7AA', boxShadow: '0 2px 4px rgba(249, 115, 22, 0.05)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#C2410C', background: '#FFF7ED', padding: '2px 6px', borderRadius: 4 }}>
-                      2. TRANSFORM (dbt Cloud)
-                    </span>
-                    <span style={{ fontSize: 16 }}>🟧</span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
-                    {activePipeline?.etl || tools.find(t => t.kind === 'etl')?.name || 'ETL'}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    Tool: <code>{tools.find(t => t.kind === 'etl')?.name || '—'}</code>
-                  </div>
-                  <div style={{ fontSize: 10.5, color: '#EA580C', marginTop: 4, fontWeight: 600 }}>
-                    ● {tools.filter(t => t.kind === 'etl' || t.kind === 'orchestrator').length} transform tool(s)
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981' }}>
-                  <ArrowRight size={22} />
-                </div>
-
-                {/* 3. TARGET NODE */}
-                <div style={{
-                  flex: '1 1 220px', padding: 14, borderRadius: 8, background: 'var(--bg-card)',
-                  border: '1px solid #C7D2FE', boxShadow: '0 2px 4px rgba(99, 102, 241, 0.05)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#4338CA', background: '#EEF2FF', padding: '2px 6px', borderRadius: 4 }}>
-                      3. TARGET (Snowflake)
-                    </span>
-                    <span style={{ fontSize: 16 }}>❄️</span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
-                    {activePipeline?.target || tools.find(t => (t.config?.role || '').toUpperCase() === 'TARGET')?.name || 'Target'}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    Instance: <code>{tools.find(t => (t.config?.role || '').toUpperCase() === 'TARGET')?.name || '—'}</code>
-                  </div>
-                  <div style={{ fontSize: 10.5, color: '#6366F1', marginTop: 4, fontWeight: 600 }}>
-                    ● Bound via API pipeline composition
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ── MODAL 1: DYNAMIC CONNECTOR CONNECT DIALOG ───────────────────────────── */}
-        {selectedConnectorForConnect && (
-          <div className="modal-backdrop" onClick={() => setSelectedConnectorForConnect(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 540 }}>
-              <div className="modal-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 24 }}>{selectedConnectorForConnect.icon}</span>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>Connect {selectedConnectorForConnect.name}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                      Enter credentials for <strong>{selectedConnectorForConnect.name}</strong> to register in observability catalog
+                {/* Connection CARDS (not the old table) */}
+                <div className="integration-conn-section">
+                  <div className="integration-conn-section-head">
+                    <div>
+                      <h3 className="integration-conn-section-title">Connections</h3>
+                      <p className="integration-conn-section-sub">
+                        {filteredTools.length} live tool{filteredTools.length === 1 ? '' : 's'} · card view
+                      </p>
+                    </div>
+                    <div className="integration-conn-section-tools">
+                      <div className="search-box" style={{ minWidth: 200 }}>
+                        <Search size={14} />
+                        <input
+                          type="text"
+                          placeholder="Filter connections…"
+                          value={search}
+                          onChange={e => setSearch(e.target.value)}
+                        />
+                      </div>
+                      <button type="button" className="export-btn" onClick={() => setTab('catalog')}>
+                        <Plus size={13} /> Add connection
+                      </button>
                     </div>
                   </div>
-                </div>
-                <button className="icon-btn" onClick={() => setSelectedConnectorForConnect(null)}><X size={16} /></button>
-              </div>
 
-              <form onSubmit={handleSaveTool} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="grid-2" style={{ gap: 10 }}>
-                  <div className="filter-select">
-                    <label>Connection Name</label>
+                  {filteredTools.length === 0 ? (
+                    <div className="integration-hero-empty">
+                      No connections yet.{' '}
+                      <button type="button" className="integration-section-link" onClick={() => setTab('catalog')}>
+                        Open Connector Directory →
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="integration-conn-grid">
+                      {filteredTools.map((tool) => {
+                        const role = roleFromTool(tool);
+                        const test = testResults[tool.tool_id];
+                        const meta = CONNECTOR_META[tool.connector_type] || {};
+                        const ok = test?.ok ?? ((tool.status || '').toLowerCase() === 'active');
+                        return (
+                          <article
+                            key={tool.tool_id || tool.instance_id}
+                            className={`integration-conn-card${role ? ` role-${String(role).toLowerCase()}` : ''}`}
+                          >
+                            <div className="integration-conn-card-top">
+                              <div
+                                className="integration-market-logo"
+                                style={{
+                                  background: `${meta.color || '#64748B'}18`,
+                                  color: meta.color || '#64748B',
+                                  borderColor: `${meta.color || '#64748B'}33`,
+                                }}
+                              >
+                                {meta.monogram || String(tool.connector_type || '??').slice(0, 2).toUpperCase()}
+                              </div>
+                              {role
+                                ? <span className={`integration-role-badge ${roleClass(role)}`}>{role}</span>
+                                : null}
+                            </div>
+                            <h4 className="integration-conn-card-name">{dash(tool.name)}</h4>
+                            <div className="integration-conn-card-type">
+                              {meta.label || tool.connector_type || '—'}
+                            </div>
+                            <p className="integration-conn-card-config">{configSummary(tool)}</p>
+                            <div className="integration-conn-card-foot">
+                              <span className={`integration-verify ${test?.ok === false ? 'is-warn' : ok ? 'is-ok' : 'is-warn'}`}>
+                                <span className="integration-market-status-dot" />
+                                {test?.ok === false ? 'Test failed' : test?.ok ? 'Verified' : dash(tool.status)}
+                              </span>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  type="button"
+                                  className="export-btn"
+                                  style={{ padding: '4px 8px', fontSize: 11 }}
+                                  disabled={testingToolId === tool.tool_id}
+                                  onClick={() => handleTest(tool.tool_id)}
+                                >
+                                  <Zap size={12} className={testingToolId === tool.tool_id ? 'spin' : ''} /> Test
+                                </button>
+                                <button
+                                  type="button"
+                                  className="export-btn"
+                                  style={{ padding: '4px 8px', fontSize: 11 }}
+                                  onClick={() => setInspectTool(tool)}
+                                >
+                                  <Eye size={12} /> Details
+                                </button>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ═══════════════ DIRECTORY (secondary) ═══════════════ */}
+            {tab === 'catalog' && (
+              <>
+                <div className="filters-bar integration-toolbar">
+                  <div className="search-box integration-search">
+                    <Search size={14} />
                     <input
                       type="text"
-                      value={connectionName}
-                      onChange={e => setConnectionName(e.target.value)}
-                      required
-                      placeholder={`e.g. ${selectedConnectorForConnect.key}-prod`}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}
+                      placeholder="Search connectors…"
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
                     />
                   </div>
+                  <div className="integration-category-pills">
+                    {CATEGORIES.map(cat => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        className={`integration-pill${categoryFilter === cat.id ? ' is-active' : ''}`}
+                        onClick={() => setCategoryFilter(cat.id)}
+                      >
+                        {cat.label} ({categoryCounts[cat.id] ?? 0})
+                      </button>
+                    ))}
+                  </div>
+                  {(search || categoryFilter !== 'all') && (
+                    <button className="clear-filters-btn" onClick={() => { setSearch(''); setCategoryFilter('all'); }}>
+                      <RotateCcw size={12} style={{ display: 'inline', marginRight: 4 }} /> Reset
+                    </button>
+                  )}
+                </div>
 
-                  <div className="filter-select">
-                    <label>Pipeline Role</label>
-                    <select
-                      value={connectionRole}
-                      onChange={e => setConnectionRole(e.target.value)}
-                      className="select-control"
-                      style={{ width: '100%' }}
-                    >
-                      <option value="SOURCE">SOURCE (Ingestion Source)</option>
-                      <option value="ETL">ETL (Transformation Engine)</option>
-                      <option value="TARGET">TARGET (Data Mart / Destination)</option>
+                <div className="integration-directory">
+                  {groupedDirectory.length === 0 ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>No connectors match.</div>
+                  ) : groupedDirectory.map((group) => {
+                    const Icon = group.Icon || Database;
+                    return (
+                      <section key={group.id} className="integration-section">
+                        <div className="integration-section-header">
+                          <div className="integration-section-title-row">
+                            <div className="integration-section-icon"><Icon size={16} color="#059669" /></div>
+                            <div>
+                              <h3 className="integration-section-title">{group.label}</h3>
+                              <p className="integration-section-subtitle">{group.subtitle}</p>
+                            </div>
+                          </div>
+                          <button type="button" className="integration-section-link" onClick={() => setCategoryFilter(group.id)}>
+                            {group.items.length} connectors <ChevronRight size={14} />
+                          </button>
+                        </div>
+                        <div className="integration-marketplace-grid">
+                          {group.items.map((entry) => {
+                            const n = connectedCountByType[entry.id] || 0;
+                            const statusLabel = !entry.apiSupported ? 'Coming soon' : n > 0 ? `Connected (${n})` : 'Available';
+                            const statusClass = !entry.apiSupported ? 'is-soon' : n > 0 ? 'is-connected' : 'is-available';
+                            return (
+                              <div key={entry.id} className="integration-market-card">
+                                <div className="integration-market-card-top">
+                                  <div className="integration-market-logo" style={{
+                                    background: `${entry.color}18`, color: entry.color, borderColor: `${entry.color}33`
+                                  }}>
+                                    {entry.monogram}
+                                  </div>
+                                  <span className={`integration-market-status ${statusClass}`}>
+                                    <span className="integration-market-status-dot" />
+                                    {statusLabel}
+                                  </span>
+                                </div>
+                                <div className="integration-market-title">{entry.label}</div>
+                                <p className="integration-market-desc">{entry.desc}</p>
+                                <button
+                                  type="button"
+                                  className={`integration-connect-btn${entry.apiSupported ? '' : ' is-disabled'}`}
+                                  disabled={!entry.apiSupported}
+                                  onClick={() => openConnect(entry)}
+                                >
+                                  {entry.apiSupported ? <>Connect <ArrowRight size={14} /></> : 'Coming soon'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })}
+                  {templates.length > 0 && (
+                    <div className="integration-templates-note">
+                      Pipeline templates: <strong>{templates.join(', ')}</strong>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Sync logs drawer — only after a sync run */}
+        {syncDrawerOpen && (
+          <div className="modal-backdrop" onClick={() => !syncing && setSyncDrawerOpen(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+              <div className="modal-header">
+                <div>
+                  <div style={{ fontWeight: 700 }}>Sync logs</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Live response from POST /v1/sync
+                    {lastSyncOk != null && (
+                      <span className={`integration-verify ${lastSyncOk ? 'is-ok' : 'is-warn'}`} style={{ marginLeft: 10 }}>
+                        <span className="integration-market-status-dot" />
+                        {lastSyncOk ? 'OK' : 'Failed'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button type="button" className="icon-btn" disabled={syncing} onClick={() => setSyncDrawerOpen(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <pre className="integration-sync-console" ref={syncLogRef} style={{ margin: 0, maxHeight: 360 }}>
+                  {syncLogs.join('\n') || (syncing ? 'Waiting for API…' : 'No output')}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Connect modal */}
+        {connectType && (
+          <div className="modal-backdrop" onClick={() => !savingTool && setConnectType(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+              <div className="modal-header">
+                <div>
+                  <div style={{ fontWeight: 700 }}>Connect {connectType.label || connectType.id}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{connectType.kind}</div>
+                </div>
+                <button type="button" className="icon-btn" disabled={savingTool} onClick={() => setConnectType(null)}><X size={16} /></button>
+              </div>
+              <form className="modal-body" onSubmit={handleSaveTool} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {saveError && (
+                  <div style={{ padding: 10, borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 12 }}>
+                    {typeof saveError === 'string' ? saveError : JSON.stringify(saveError)}
+                  </div>
+                )}
+                <label style={{ fontSize: 12, fontWeight: 600 }}>
+                  Connection name
+                  <input className="custom-date-input" style={{ width: '100%', marginTop: 4 }} value={connectionName}
+                    onChange={e => setConnectionName(e.target.value)} required />
+                </label>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>
+                  Role
+                  <select className="select-control" style={{ width: '100%', marginTop: 4 }} value={connectionRole}
+                    onChange={e => setConnectionRole(e.target.value)}>
+                    <option value="SOURCE">SOURCE</option>
+                    <option value="ETL">ETL</option>
+                    <option value="TARGET">TARGET</option>
+                  </select>
+                </label>
+                {fieldsForType(connectType.id).map(field => (
+                  <label key={field.key} style={{ fontSize: 12, fontWeight: 600 }}>
+                    {field.label}{field.required ? ' *' : ''}
+                    {field.type === 'textarea' ? (
+                      <textarea className="custom-date-input" style={{ width: '100%', marginTop: 4, minHeight: 72 }}
+                        value={formValues[field.key] || ''} required={field.required}
+                        onChange={e => setFormValues(v => ({ ...v, [field.key]: e.target.value }))} />
+                    ) : (
+                      <input className="custom-date-input" style={{ width: '100%', marginTop: 4 }}
+                        type={field.type === 'password' ? 'password' : 'text'}
+                        value={formValues[field.key] || ''} required={field.required}
+                        placeholder={field.placeholder || ''}
+                        autoComplete={field.type === 'password' ? 'new-password' : 'off'}
+                        onChange={e => setFormValues(v => ({ ...v, [field.key]: e.target.value }))} />
+                    )}
+                  </label>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button type="button" className="export-btn" disabled={savingTool} onClick={() => setConnectType(null)}>Cancel</button>
+                  <button type="submit" className="export-btn" disabled={savingTool}
+                    style={{ background: '#059669', color: '#fff', borderColor: '#059669' }}>
+                    {savingTool ? 'Saving…' : 'Register'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Compose modal */}
+        {composeOpen && (
+          <div className="modal-backdrop" onClick={() => !composing && setComposeOpen(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
+              <div className="modal-header">
+                <div style={{ fontWeight: 700 }}>Compose pipeline</div>
+                <button type="button" className="icon-btn" disabled={composing} onClick={() => setComposeOpen(false)}><X size={16} /></button>
+              </div>
+              <form className="modal-body" onSubmit={handleCompose} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {composeError && (
+                  <div style={{ padding: 10, borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C', fontSize: 12 }}>
+                    {typeof composeError === 'string' ? composeError : JSON.stringify(composeError)}
+                  </div>
+                )}
+                <label style={{ fontSize: 12, fontWeight: 600 }}>
+                  Pipeline name
+                  <input className="custom-date-input" style={{ width: '100%', marginTop: 4 }}
+                    value={composeForm.pipeline_name} required
+                    onChange={e => setComposeForm(f => ({ ...f, pipeline_name: e.target.value }))} />
+                </label>
+                <div className="integration-compose-flow">
+                  <div className="integration-compose-step is-source">
+                    <span className={`integration-role-badge ${roleClass('SOURCE')}`}>Source</span>
+                    <select className="select-control" style={{ width: '100%', marginTop: 8 }} required
+                      value={composeForm.source_tool_id}
+                      onChange={e => setComposeForm(f => ({ ...f, source_tool_id: e.target.value }))}>
+                      <option value="">Select…</option>
+                      {dbTools.map(t => <option key={t.tool_id} value={t.tool_id}>{toolLabel(t)}</option>)}
+                    </select>
+                  </div>
+                  <ArrowRight size={16} className="integration-arch-arrow" />
+                  <div className="integration-compose-step is-etl">
+                    <span className={`integration-role-badge ${roleClass('ETL')}`}>ETL</span>
+                    <select className="select-control" style={{ width: '100%', marginTop: 8 }} required
+                      value={composeForm.etl_tool_id}
+                      onChange={e => setComposeForm(f => ({ ...f, etl_tool_id: e.target.value }))}>
+                      <option value="">Select…</option>
+                      {etlTools.map(t => <option key={t.tool_id} value={t.tool_id}>{toolLabel(t)}</option>)}
+                    </select>
+                  </div>
+                  <ArrowRight size={16} className="integration-arch-arrow" />
+                  <div className="integration-compose-step is-target">
+                    <span className={`integration-role-badge ${roleClass('TARGET')}`}>Target</span>
+                    <select className="select-control" style={{ width: '100%', marginTop: 8 }} required
+                      value={composeForm.target_tool_id}
+                      onChange={e => setComposeForm(f => ({ ...f, target_tool_id: e.target.value }))}>
+                      <option value="">Select…</option>
+                      {dbTools.map(t => <option key={t.tool_id} value={t.tool_id}>{toolLabel(t)}</option>)}
                     </select>
                   </div>
                 </div>
+                <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={composeForm.make_active}
+                    onChange={e => setComposeForm(f => ({ ...f, make_active: e.target.checked }))} />
+                  Make sync default
+                </label>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button type="button" className="export-btn" disabled={composing} onClick={() => setComposeOpen(false)}>Cancel</button>
+                  <button type="submit" className="export-btn" disabled={composing}
+                    style={{ background: '#059669', color: '#fff', borderColor: '#059669' }}>
+                    {composing ? 'Creating…' : 'Create pipeline'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
-                {/* DYNAMIC FORM FIELDS SPECIFIC TO THIS CONNECTOR */}
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 10, padding: 12,
-                  background: 'var(--bg-card-subtle)', borderRadius: 8, border: '1px solid var(--border)'
-                }}>
-                  {selectedConnectorForConnect.fields.map(field => (
-                    <div key={field.key} className="filter-select">
-                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>{field.label} {field.required && <strong style={{ color: '#EF4444' }}>*</strong>}</span>
-                      </label>
-
-                      {field.type === 'textarea' ? (
-                        <textarea
-                          rows={3}
-                          value={connectorFormValues[field.key] || ''}
-                          onChange={e => setConnectorFormValues({ ...connectorFormValues, [field.key]: e.target.value })}
-                          required={field.required}
-                          placeholder={field.placeholder}
-                          style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: 11 }}
-                        />
-                      ) : (
-                        <input
-                          type={field.type || 'text'}
-                          value={connectorFormValues[field.key] || ''}
-                          onChange={e => setConnectorFormValues({ ...connectorFormValues, [field.key]: e.target.value })}
-                          required={field.required}
-                          placeholder={field.placeholder}
-                          style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-                        />
-                      )}
+        {/* Details */}
+        {inspectTool && (
+          <div className="modal-backdrop" onClick={() => setInspectTool(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+              <div className="modal-header">
+                <div>
+                  <div style={{ fontWeight: 700 }}>{dash(inspectTool.name)}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {dash(inspectTool.connector_type)} · {dash(roleFromTool(inspectTool))}
+                  </div>
+                </div>
+                <button type="button" className="icon-btn" onClick={() => setInspectTool(null)}><X size={16} /></button>
+              </div>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Config (secrets hidden)</div>
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                  {safeConfigEntries(inspectTool.config).length === 0 ? (
+                    <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 12 }}>No config</div>
+                  ) : safeConfigEntries(inspectTool.config).map(([k, v]) => (
+                    <div key={k} style={{
+                      display: 'grid', gridTemplateColumns: '130px 1fr', gap: 8,
+                      padding: '8px 12px', borderBottom: '1px solid var(--border)', fontSize: 12
+                    }}>
+                      <span style={{ color: 'var(--text-muted)' }}>{k}</span>
+                      <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                        {Array.isArray(v) ? v.join(', ') : String(v ?? '—')}
+                      </span>
                     </div>
                   ))}
                 </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-                  <button type="button" className="export-btn" onClick={() => setSelectedConnectorForConnect(null)}>Cancel</button>
-                  <button
-                    type="submit"
-                    className="export-btn"
-                    style={{ background: '#10B981', color: '#FFFFFF', border: 'none', fontWeight: 600 }}
-                  >
-                    Save & Test Connection
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* ── MODAL 2: COMPOSE PIPELINE POP-UP DIALOG ────────────────────────────── */}
-        {composeModalOpen && (
-          <div className="modal-backdrop" onClick={() => setComposeModalOpen(false)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 580 }}>
-              <div className="modal-header">
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 16 }}>Compose Pipeline from Tools</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Bind connected Source database, dbt ETL transformation, and Target mart</div>
-                </div>
-                <button className="icon-btn" onClick={() => setComposeModalOpen(false)}><X size={16} /></button>
-              </div>
-
-              <form onSubmit={handleComposePipelineSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div className="filter-select">
-                  <label>Pipeline Name</label>
-                  <input
-                    type="text"
-                    value={composeForm.pipeline_name}
-                    onChange={e => setComposeForm({ ...composeForm, pipeline_name: e.target.value })}
-                    required
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-                  />
-                </div>
-
-                <div className="filter-select">
-                  <label>1. Source Database (Ingestion Source)</label>
-                  <select
-                    className="select-control"
-                    style={{ width: '100%' }}
-                    value={composeForm.source_tool_id}
-                    onChange={e => setComposeForm({ ...composeForm, source_tool_id: e.target.value })}
-                  >
-                    {tools.map(t => (
-                      <option key={t.tool_id} value={t.tool_id}>
-                        {t.name} ({t.connector_type.toUpperCase()}) &bull; {t.config?.schema || 'RAW_DATA'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="filter-select">
-                  <label>2. Transformation / ETL Engine</label>
-                  <select
-                    className="select-control"
-                    style={{ width: '100%' }}
-                    value={composeForm.etl_tool_id}
-                    onChange={e => setComposeForm({ ...composeForm, etl_tool_id: e.target.value })}
-                  >
-                    {tools.map(t => (
-                      <option key={t.tool_id} value={t.tool_id}>
-                        {t.name} ({t.connector_type.toUpperCase()}) &bull; {t.config?.project_name || 'inventory_analytics'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="filter-select">
-                  <label>3. Destination / Target Mart</label>
-                  <select
-                    className="select-control"
-                    style={{ width: '100%' }}
-                    value={composeForm.target_tool_id}
-                    onChange={e => setComposeForm({ ...composeForm, target_tool_id: e.target.value })}
-                  >
-                    {tools.map(t => (
-                      <option key={t.tool_id} value={t.tool_id}>
-                        {t.name} ({t.connector_type.toUpperCase()}) &bull; {t.config?.schema || 'FINAL_DATA'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                  <button type="button" className="export-btn" onClick={() => setComposeModalOpen(false)}>Cancel</button>
-                  <button
-                    type="submit"
-                    className="export-btn"
-                    style={{ background: '#10B981', color: '#FFFFFF', border: 'none', fontWeight: 600 }}
-                  >
-                    Save & Deploy Pipeline
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* ── MODAL 3: LIVE REAL-TIME SYNC EXECUTION TERMINAL ─────────────────────── */}
-        {syncModalOpen && (
-          <div className="modal-backdrop" onClick={() => !syncing && setSyncModalOpen(false)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 650 }}>
-              <div className="modal-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 8, background: syncing ? '#ECFDF5' : '#EEF2FF',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: syncing ? '#10B981' : '#6366F1'
-                  }}>
-                    <Terminal size={18} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>Pipeline Sync Execution Console</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                      Target Pipeline: <strong>{activePipeline?.pipeline_name || 'Sync-default'}</strong>
-                      {activePipeline?.source || activePipeline?.target
-                        ? ` (${activePipeline.source || 'source'} → ${activePipeline.etl || activePipeline.tool || 'etl'} → ${activePipeline.target || 'target'})`
-                        : ''}
-                    </div>
-                  </div>
-                </div>
-                {!syncing && <button className="icon-btn" onClick={() => setSyncModalOpen(false)}><X size={16} /></button>}
-              </div>
-
-              {/* Progress Bar */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11.5, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{syncing ? 'Synchronizing telemetry & executing dbt run...' : 'Synchronization Complete'}</span>
-                  <strong style={{ color: '#10B981' }}>{syncProgress}%</strong>
-                </div>
-                <div style={{ height: 6, width: '100%', background: 'var(--border)', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${syncProgress}%`, background: '#10B981', transition: 'width 0.4s ease-in-out' }} />
-                </div>
-              </div>
-
-              {/* Live Terminal Log Viewer */}
-              <div style={{
-                background: '#0F172A', borderRadius: 8, padding: '14px 16px',
-                fontFamily: 'monospace', fontSize: 11.5, color: '#38BDF8',
-                maxHeight: 250, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6,
-                border: '1px solid rgba(255, 255, 255, 0.1)'
-              }}>
-                {syncLogs.map((log, i) => {
-                  const isSuccess = log.includes('[SUCCESS]');
-                  const isError = log.includes('[ERROR]');
-                  const isAuth = log.includes('[AUTH]');
-
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        color: isSuccess ? '#10B981' : isError ? '#EF4444' : isAuth ? '#F59E0B' : '#38BDF8',
-                        lineHeight: 1.4
-                      }}
-                    >
-                      {log}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-                <button
-                  className="export-btn"
-                  onClick={handleStartLiveSync}
-                  disabled={syncing}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                >
-                  <RefreshCw size={13} className={syncing ? 'spin' : ''} />
-                  <span>{syncing ? 'Syncing...' : 'Re-run Sync'}</span>
-                </button>
-
-                <button
-                  className="export-btn"
-                  onClick={() => setSyncModalOpen(false)}
-                  disabled={syncing}
-                  style={{ background: '#10B981', color: '#FFFFFF', border: 'none', fontWeight: 600 }}
-                >
-                  Close Console
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── MODAL 4: SCHEMA & DATA STRUCTURE INSPECTOR ───────────────────────────── */}
-        {selectedToolForInspection && (
-          <div className="modal-backdrop" onClick={() => setSelectedToolForInspection(null)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 680 }}>
-              <div className="modal-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ fontSize: 22 }}>{selectedToolForInspection.tool.connector_type === 'snowflake' ? '❄️' : '🟧'}</div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>
-                      Schema & Table Structure: {selectedToolForInspection.datasetName}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                      Role: <strong>{selectedToolForInspection.role}</strong> &bull; Instance: <code>{selectedToolForInspection.tool.name}</code>
-                    </div>
-                  </div>
-                </div>
-                <button className="icon-btn" onClick={() => setSelectedToolForInspection(null)}><X size={16} /></button>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Connection Metadata Summary */}
-                <div style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
-                  padding: 12, background: 'var(--bg-card-subtle)', borderRadius: 8, border: '1px solid var(--border)'
-                }}>
-                  <div>
-                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Warehouse / Host</div>
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>{selectedToolForInspection.tool.config?.warehouse_id || selectedToolForInspection.tool.config?.warehouse || '—'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Database & Schema</div>
-                    <div style={{ fontWeight: 600, fontSize: 12 }}>{selectedToolForInspection.tool.config?.database_id || 'INVENTORY_ANALYTICS'}.{selectedToolForInspection.tool.config?.schema || 'RAW_DATA'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Table Records</div>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: '#10B981' }}>65 Verified Rows</div>
-                  </div>
-                </div>
-
-                {/* Table Columns & Data Types */}
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Table size={14} color="#10B981" />
-                    <span>Columns & Data Types in {selectedToolForInspection.datasetName}</span>
-                  </div>
-
-                  <div className="table-wrapper" style={{ maxHeight: 240, overflowY: 'auto' }}>
-                    <table className="vithi-table">
-                      <thead>
-                        <tr>
-                          <th>Column Name</th>
-                          <th>Data Type</th>
-                          <th>Constraint</th>
-                          <th>Nullability</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          { name: 'ID', type: 'NUMBER(38,0)', pk: true, null: 'NOT NULL' },
-                          { name: 'ITEM_NAME', type: 'VARCHAR(16777216)', pk: false, null: 'NULLABLE' },
-                          { name: 'CATEGORY', type: 'VARCHAR(16777216)', pk: false, null: 'NULLABLE' },
-                          { name: 'QUANTITY', type: 'NUMBER(38,0)', pk: false, null: 'NULLABLE' },
-                          { name: 'UNIT_PRICE', type: 'NUMBER(38,2)', pk: false, null: 'NULLABLE' },
-                          { name: 'LOCATION', type: 'VARCHAR(16777216)', pk: false, null: 'NULLABLE' },
-                          { name: 'SUPPLIER', type: 'VARCHAR(16777216)', pk: false, null: 'NULLABLE' },
-                          { name: 'LAST_UPDATED', type: 'TIMESTAMP_NTZ(9)', pk: false, null: 'NULLABLE' },
-                        ].map(col => (
-                          <tr key={col.name}>
-                            <td style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                {col.pk && <Key size={12} color="#F59E0B" title="Primary Key" />}
-                                <span>{col.name}</span>
-                              </div>
-                            </td>
-                            <td><code style={{ fontSize: 11, color: '#6366F1' }}>{col.type}</code></td>
-                            <td>
-                              {col.pk ? (
-                                <span style={{ fontSize: 10, background: '#FEF3C7', color: '#B45309', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
-                                  PRIMARY KEY
-                                </span>
-                              ) : <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>-</span>}
-                            </td>
-                            <td style={{ fontSize: 11, color: col.null === 'NOT NULL' ? '#EF4444' : 'var(--text-muted)', fontWeight: 500 }}>
-                              {col.null}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  <button
-                    className="export-btn"
-                    onClick={() => handleTestConnection(selectedToolForInspection.tool.tool_id)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <Zap size={12} color="#6366F1" />
-                    <span>Test Credentials</span>
+                  <button type="button" className="export-btn" disabled={testingToolId === inspectTool.tool_id}
+                    onClick={() => handleTest(inspectTool.tool_id)}>
+                    <Play size={12} /> Test
                   </button>
-                  <button className="export-btn" onClick={() => setSelectedToolForInspection(null)}>
-                    Close Inspector
-                  </button>
+                  <button type="button" className="export-btn" onClick={() => setInspectTool(null)}>Close</button>
                 </div>
               </div>
             </div>
