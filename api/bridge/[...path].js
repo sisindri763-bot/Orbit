@@ -1,6 +1,9 @@
 /**
  * Server-side proxy so the backend host stays in Vercel env (API_BACKEND_URL),
  * not in the git repo or the browser bundle.
+ *
+ * Prefer pathname over req.query.path — on Vercel, catch-all query segments
+ * are often empty for this Vite + /api setup, which would proxy only to "/".
  */
 export default async function handler(req, res) {
   const base = (process.env.API_BACKEND_URL || '').replace(/\/$/, '');
@@ -12,9 +15,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  const parts = req.query.path;
-  const suffix = Array.isArray(parts) ? parts.join('/') : parts || '';
   const incoming = new URL(req.url, 'http://localhost');
+  const bridgePrefix = '/api/bridge/';
+  let suffix = '';
+  if (incoming.pathname.startsWith(bridgePrefix)) {
+    suffix = incoming.pathname.slice(bridgePrefix.length);
+  } else {
+    const parts = req.query.path;
+    suffix = Array.isArray(parts) ? parts.join('/') : parts || '';
+  }
+
   const target = new URL(`${base}/${suffix}`);
   incoming.searchParams.forEach((value, key) => {
     if (key !== 'path') target.searchParams.append(key, value);
