@@ -2,15 +2,15 @@
   "rewrites": [
     {
       "source": "/api/v1/:path*",
-      "destination": "/api/bridge/api/v1/:path*"
+      "destination": "/api/bridge?__u=/api/v1/:path*"
     },
     {
       "source": "/v1/:path*",
-      "destination": "/api/bridge/v1/:path*"
+      "destination": "/api/bridge?__u=/v1/:path*"
     },
     {
       "source": "/health",
-      "destination": "/api/bridge/health"
+      "destination": "/api/bridge?__u=/health"
     },
     {
       "source": "/((?!api/).*)",
