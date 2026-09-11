@@ -15,6 +15,7 @@ export default function PageHeader({
   customStart: customStartProp = '',
   customEnd: customEndProp = '',
   presets: presetsProp,
+  hideDateRange = false,
 }) {
   const [env, setEnv] = useState('Production');
   const [refreshing, setRefreshing] = useState(false);
@@ -124,6 +125,7 @@ export default function PageHeader({
           </select>
         </div>
 
+        {!hideDateRange && (
         <div style={{ position: 'relative' }} ref={popoverRef}>
           <button
             type="button"
@@ -190,6 +192,7 @@ export default function PageHeader({
             </div>
           )}
         </div>
+        )}
 
         <button className="icon-btn" onClick={handleRefresh} title="Refresh data">
           <RefreshCw size={13} className={refreshing ? 'spin' : ''} />

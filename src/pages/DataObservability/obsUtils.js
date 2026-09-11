@@ -75,14 +75,27 @@ export function lagPct(lagHours, slaHours) {
   return Math.min(220, Math.round((Number(lagHours) / Number(slaHours)) * 100));
 }
 
+function isDarkTheme() {
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+}
+
+/** Recharts tooltip styles — follows light/dark at render time */
 export const TOOLTIP_STYLE = {
-  contentStyle: {
-    background: '#FFFFFF',
-    border: '1px solid #E2E8F0',
-    borderRadius: 8,
-    fontSize: 12,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+  get contentStyle() {
+    const dark = isDarkTheme();
+    return {
+      background: dark ? '#141A30' : '#FFFFFF',
+      border: `1px solid ${dark ? 'rgba(255,255,255,0.12)' : '#E2E8F0'}`,
+      borderRadius: 8,
+      fontSize: 12,
+      boxShadow: dark ? '0 4px 12px rgba(0,0,0,0.45)' : '0 4px 12px rgba(0,0,0,0.08)',
+      color: dark ? '#F8FAFC' : '#0F172A',
+    };
   },
-  itemStyle: { color: '#0F172A' },
-  labelStyle: { color: '#64748B', fontWeight: 600 },
+  get itemStyle() {
+    return { color: isDarkTheme() ? '#F8FAFC' : '#0F172A' };
+  },
+  get labelStyle() {
+    return { color: isDarkTheme() ? '#94A3B8' : '#64748B', fontWeight: 600 };
+  },
 };

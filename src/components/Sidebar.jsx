@@ -29,7 +29,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar() {
-  const [obsOpen, setObsOpen] = useState(true);
+  const [obsOpen, setObsOpen] = useState(false);
   const location = useLocation();
   const { isDark, toggleTheme } = useTheme();
 

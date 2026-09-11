@@ -1,4 +1,5 @@
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
+import { TOOLTIP_STYLE } from '../pages/DataObservability/obsUtils';
 
 export default function SparkLine({ data = [], color = '#10B981', height = 36 }) {
   if (!Array.isArray(data) || data.length === 0) {
@@ -22,8 +23,8 @@ export default function SparkLine({ data = [], color = '#10B981', height = 36 })
           isAnimationActive={false}
         />
         <Tooltip
-          contentStyle={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 6, fontSize: 11, color: '#0F172A' }}
-          itemStyle={{ color: '#0F172A' }}
+          {...TOOLTIP_STYLE}
+          contentStyle={{ ...TOOLTIP_STYLE.contentStyle, borderRadius: 6, fontSize: 11 }}
           formatter={(v) => [typeof v === 'number' ? v.toFixed(1) : v]}
           labelFormatter={() => ''}
         />

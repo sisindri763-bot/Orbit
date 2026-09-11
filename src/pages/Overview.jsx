@@ -18,19 +18,7 @@ import {
   fetchLogs,
   fetchFilters
 } from '../api/client';
-
-const TOOLTIP_STYLE = {
-  contentStyle: {
-    background: '#FFFFFF',
-    border: '1px solid #E2E8F0',
-    borderRadius: 8,
-    fontSize: 12,
-    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-    color: '#0F172A'
-  },
-  itemStyle: { color: '#0F172A' },
-  labelStyle: { color: '#64748B', fontWeight: 600 },
-};
+import { TOOLTIP_STYLE } from './DataObservability/obsUtils';
 
 function buildQueryParams({ headerDatePreset, customDateRange, pipelineFilter, statusFilter }) {
   const params = {};

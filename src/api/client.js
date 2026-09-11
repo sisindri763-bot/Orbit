@@ -153,6 +153,9 @@ export const fetchDqRules = (params = {}) =>
 export const fetchTools = (params = {}) =>
   safeGet('/api/v1/tools', '/v1/tools', params);
 
+export const fetchTool = (toolId) =>
+  safeGet(`/v1/tools/${toolId}`, null);
+
 export const fetchConnectorTypes = () =>
   safeGet('/api/v1/connectors/types', '/v1/tools/types');
 
@@ -162,11 +165,18 @@ export const testToolConnection = (toolId) =>
 export const createTool = (payload) =>
   api.post('/v1/tools', payload).then(r => r.data);
 
+export const updateToolSecret = (toolId, payload) =>
+  api.put(`/v1/tools/${toolId}/secret`, payload).then(r => r.data);
+
 export const createPipelineFromTools = (payload) =>
   api.post('/v1/pipelines/from-tools', payload).then(r => r.data);
 
 export const fetchPipelineTemplates = () =>
   safeGet('/v1/pipelines/templates', null);
+
+/** Sync-default pipeline with embedded source / etl / target tool configs */
+export const fetchCurrentPipeline = () =>
+  safeGet('/v1/pipelines/current', null);
 
 // ── Operations & Triggers ────────────────────────────────────────────────────
 export const triggerSync = (payload = {}) =>
